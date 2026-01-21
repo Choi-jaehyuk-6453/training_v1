@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Plus, Pencil, Trash2, User, Phone, MapPin } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, User, Phone, MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -89,6 +89,20 @@ export default function AdminGuards() {
 
   const selectedCompany = form.watch("company");
   const filteredSites = sites.filter((site) => site.company === selectedCompany);
+
+  const guardsBySite = useMemo(() => {
+    const grouped: Record<string, GuardWithSite[]> = {};
+    
+    guards.forEach((guard) => {
+      const siteId = guard.siteId || "unassigned";
+      if (!grouped[siteId]) {
+        grouped[siteId] = [];
+      }
+      grouped[siteId].push(guard);
+    });
+    
+    return grouped;
+  }, [guards]);
 
   const createMutation = useMutation({
     mutationFn: async (data: GuardForm) => {
@@ -218,8 +232,8 @@ export default function AdminGuards() {
         </div>
 
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div className="space-y-6">
+            {[1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-48" />
             ))}
           </div>
@@ -232,62 +246,84 @@ export default function AdminGuards() {
             </Button>
           </Card>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {guards.map((guard) => (
-              <Card key={guard.id} data-testid={`guard-card-${guard.id}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                        <User className="h-5 w-5 text-accent" />
+          <div className="space-y-6">
+            {Object.entries(guardsBySite).map(([siteId, siteGuards]) => {
+              const site = sites.find((s) => s.id === siteId);
+              const siteName = site?.name || "현장 미배정";
+              const siteCompany = site?.company;
+              
+              return (
+                <Card key={siteId} data-testid={`site-group-${siteId}`}>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Building2 className="h-6 w-6 text-primary" />
                       </div>
-                      <Badge variant="secondary">
-                        {guard.company === "mirae_abm" ? "미래에이비엠" : "다원PMC"}
-                      </Badge>
+                      <div>
+                        <CardTitle className="text-xl flex items-center gap-3">
+                          {siteName}
+                          {siteCompany && (
+                            <Badge variant="outline">
+                              {siteCompany === "mirae_abm" ? "미래에이비엠" : "다원PMC"}
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription>
+                          {siteGuards.length}명의 경비원
+                        </CardDescription>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditDialog(guard)}
-                        data-testid={`button-edit-${guard.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setDeletingGuard(guard);
-                          setDeleteDialogOpen(true);
-                        }}
-                        data-testid={`button-delete-${guard.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {siteGuards.map((guard) => (
+                        <div 
+                          key={guard.id} 
+                          className="p-4 bg-muted/30 rounded-lg"
+                          data-testid={`guard-card-${guard.id}`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                                <User className="h-4 w-4 text-accent" />
+                              </div>
+                              <span className="font-medium text-lg">{guard.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog(guard)}
+                                data-testid={`button-edit-${guard.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setDeletingGuard(guard);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                data-testid={`button-delete-${guard.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                          {guard.phone && (
+                            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                              <Phone className="h-3 w-3" />
+                              <span>{guard.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardTitle className="text-xl mb-2">{guard.name}</CardTitle>
-                  {guard.phone && (
-                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                      <Phone className="h-4 w-4" />
-                      <span>{guard.phone}</span>
-                    </div>
-                  )}
-                  {guard.site && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                      <span>{guard.site.name}</span>
-                    </div>
-                  )}
-                  <p className="text-sm text-muted-foreground mt-4">
-                    {new Date(guard.createdAt).toLocaleDateString("ko-KR")} 등록
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </main>
@@ -379,14 +415,17 @@ export default function AdminGuards() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">근무 현장</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select 
+                      onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)} 
+                      value={field.value || "__none__"}
+                    >
                       <FormControl>
                         <SelectTrigger className="h-12 text-base" data-testid="select-site">
                           <SelectValue placeholder="현장 선택 (선택사항)" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">선택 안함</SelectItem>
+                        <SelectItem value="__none__">선택 안함</SelectItem>
                         {filteredSites.map((site) => (
                           <SelectItem key={site.id} value={site.id}>
                             {site.name}

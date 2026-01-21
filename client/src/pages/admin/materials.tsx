@@ -58,10 +58,16 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { CompanyLogo } from "@/components/CompanyLogo";
 import type { TrainingMaterial } from "@shared/schema";
 
+const MONTHS = [
+  "수시", "1월", "2월", "3월", "4월", "5월", "6월", 
+  "7월", "8월", "9월", "10월", "11월", "12월"
+];
+
 const materialSchema = z.object({
   title: z.string().min(1, "제목을 입력해주세요"),
   description: z.string().optional(),
   type: z.enum(["card", "video"]),
+  month: z.string().default("수시"),
   videoUrl: z.string().optional(),
   cardImages: z.array(z.string()).optional(),
 });
@@ -87,6 +93,7 @@ export default function AdminMaterials() {
       title: "",
       description: "",
       type: "card",
+      month: "수시",
       videoUrl: "",
       cardImages: [],
     },
@@ -200,6 +207,7 @@ export default function AdminMaterials() {
       title: "",
       description: "",
       type: "card",
+      month: "수시",
       videoUrl: "",
       cardImages: [],
     });
@@ -213,6 +221,7 @@ export default function AdminMaterials() {
       title: material.title,
       description: material.description || "",
       type: material.type,
+      month: material.month || "수시",
       videoUrl: material.videoUrl || "",
       cardImages: material.cardImages || [],
     });
@@ -281,7 +290,7 @@ export default function AdminMaterials() {
               <Card key={material.id} className="relative" data-testid={`material-card-${material.id}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {material.type === "card" ? (
                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                           <BookOpen className="h-5 w-5 text-primary" />
@@ -293,6 +302,9 @@ export default function AdminMaterials() {
                       )}
                       <Badge variant="secondary">
                         {material.type === "card" ? "카드형" : "동영상"}
+                      </Badge>
+                      <Badge variant="outline">
+                        {material.month || "수시"}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1">
@@ -356,27 +368,52 @@ export default function AdminMaterials() {
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-base">자료 유형</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="h-12 text-base" data-testid="select-type">
-                          <SelectValue placeholder="유형 선택" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="card">카드형 (이미지)</SelectItem>
-                        <SelectItem value="video">동영상 (URL)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-base">자료 유형</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-12 text-base" data-testid="select-type">
+                            <SelectValue placeholder="유형 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="card">카드형 (이미지)</SelectItem>
+                          <SelectItem value="video">동영상 (URL)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="month"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-base">제공 시기</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-12 text-base" data-testid="select-month">
+                            <SelectValue placeholder="제공 시기 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {MONTHS.map((m) => (
+                            <SelectItem key={m} value={m}>{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <FormField
                 control={form.control}

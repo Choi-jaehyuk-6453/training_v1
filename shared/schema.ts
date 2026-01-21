@@ -47,6 +47,7 @@ export const trainingMaterials = pgTable("training_materials", {
   type: materialTypeEnum("type").notNull(),
   videoUrl: text("video_url"),
   cardImages: text("card_images").array(),
+  month: text("month").notNull().default("수시"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
