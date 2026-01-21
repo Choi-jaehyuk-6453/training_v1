@@ -52,10 +52,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "입력 정보가 올바르지 않습니다" });
       }
 
-      const { username, password, role } = result.data;
+      const { username, password } = result.data;
 
-      if (role === "admin") {
-        if (username === "관리자" && password === "admin123") {
+      if (username === "관리자") {
+        if (password === "admin123") {
           const adminUser = await storage.getUserByUsername("관리자");
           let admin = adminUser;
           
@@ -77,7 +77,7 @@ export async function registerRoutes(
             user: admin 
           });
         }
-        return res.status(401).json({ message: "관리자 정보가 올바르지 않습니다" });
+        return res.status(401).json({ message: "비밀번호가 올바르지 않습니다" });
       }
 
       const user = await storage.getUserByUsername(username);
@@ -85,8 +85,8 @@ export async function registerRoutes(
         return res.status(401).json({ message: "등록되지 않은 사용자입니다" });
       }
 
-      if (user.role !== "guard") {
-        return res.status(401).json({ message: "경비원 계정이 아닙니다" });
+      if (user.role === "admin") {
+        return res.status(401).json({ message: "관리자는 '관리자' 아이디로 로그인해주세요" });
       }
 
       const phoneLastFour = user.phone?.slice(-4) || user.password;

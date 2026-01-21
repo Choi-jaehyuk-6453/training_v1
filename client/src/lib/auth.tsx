@@ -4,7 +4,7 @@ import type { User } from "@shared/schema";
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string, role: "admin" | "guard") => Promise<{ success: boolean; message?: string }>;
+  login: (username: string, password: string) => Promise<{ success: boolean; message?: string; user?: User }>;
   logout: () => Promise<void>;
   refetch: () => Promise<void>;
 }
@@ -35,18 +35,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, []);
 
-  const login = async (username: string, password: string, role: "admin" | "guard") => {
+  const login = async (username: string, password: string) => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ username, password }),
         credentials: "include",
       });
       const data = await res.json();
       if (res.ok) {
         setUser(data.user);
-        return { success: true };
+        return { success: true, user: data.user };
       }
       return { success: false, message: data.message || "로그인에 실패했습니다" };
     } catch {
