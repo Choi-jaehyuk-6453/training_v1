@@ -69,6 +69,7 @@ const materialSchema = z.object({
   type: z.enum(["card", "video"]),
   month: z.string().default("수시"),
   videoUrl: z.string().optional(),
+  videoUrls: z.array(z.string()).optional(),
   cardImages: z.array(z.string()).optional(),
 });
 
@@ -81,6 +82,8 @@ export default function AdminMaterials() {
   const [editingMaterial, setEditingMaterial] = useState<TrainingMaterial | null>(null);
   const [deletingMaterial, setDeletingMaterial] = useState<TrainingMaterial | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [newVideoUrl, setNewVideoUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
   const { data: materials = [], isLoading } = useQuery<TrainingMaterial[]>({
@@ -95,6 +98,7 @@ export default function AdminMaterials() {
       type: "card",
       month: "수시",
       videoUrl: "",
+      videoUrls: [],
       cardImages: [],
     },
   });
@@ -106,12 +110,16 @@ export default function AdminMaterials() {
       await apiRequest("POST", "/api/training-materials", {
         ...data,
         cardImages: materialType === "card" ? uploadedImages : [],
+        videoUrls: materialType === "video" ? videoUrls : [],
+        videoUrl: materialType === "video" && videoUrls.length > 0 ? videoUrls[0] : data.videoUrl,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/training-materials"] });
       setDialogOpen(false);
       setUploadedImages([]);
+      setVideoUrls([]);
+      setNewVideoUrl("");
       form.reset();
       toast({ title: "성공", description: "교육 자료가 등록되었습니다." });
     },
@@ -125,6 +133,8 @@ export default function AdminMaterials() {
       await apiRequest("PATCH", `/api/training-materials/${editingMaterial?.id}`, {
         ...data,
         cardImages: materialType === "card" ? uploadedImages : [],
+        videoUrls: materialType === "video" ? videoUrls : [],
+        videoUrl: materialType === "video" && videoUrls.length > 0 ? videoUrls[0] : data.videoUrl,
       });
     },
     onSuccess: () => {
@@ -132,6 +142,8 @@ export default function AdminMaterials() {
       setDialogOpen(false);
       setEditingMaterial(null);
       setUploadedImages([]);
+      setVideoUrls([]);
+      setNewVideoUrl("");
       form.reset();
       toast({ title: "성공", description: "교육 자료가 수정되었습니다." });
     },
@@ -200,15 +212,29 @@ export default function AdminMaterials() {
     setUploadedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const addVideoUrl = () => {
+    if (newVideoUrl.trim()) {
+      setVideoUrls((prev) => [...prev, newVideoUrl.trim()]);
+      setNewVideoUrl("");
+    }
+  };
+
+  const removeVideoUrl = (index: number) => {
+    setVideoUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const openCreateDialog = () => {
     setEditingMaterial(null);
     setUploadedImages([]);
+    setVideoUrls([]);
+    setNewVideoUrl("");
     form.reset({
       title: "",
       description: "",
       type: "card",
       month: "수시",
       videoUrl: "",
+      videoUrls: [],
       cardImages: [],
     });
     setDialogOpen(true);
@@ -217,12 +243,15 @@ export default function AdminMaterials() {
   const openEditDialog = (material: TrainingMaterial) => {
     setEditingMaterial(material);
     setUploadedImages(material.cardImages || []);
+    setVideoUrls(material.videoUrls || (material.videoUrl ? [material.videoUrl] : []));
+    setNewVideoUrl("");
     form.reset({
       title: material.title,
       description: material.description || "",
       type: material.type,
       month: material.month || "수시",
       videoUrl: material.videoUrl || "",
+      videoUrls: material.videoUrls || [],
       cardImages: material.cardImages || [],
     });
     setDialogOpen(true);
@@ -454,24 +483,62 @@ export default function AdminMaterials() {
               />
 
               {materialType === "video" && (
-                <FormField
-                  control={form.control}
-                  name="videoUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-base">동영상 URL</FormLabel>
-                      <FormControl>
-                        <Input 
-                          {...field} 
-                          placeholder="https://www.youtube.com/watch?v=..." 
-                          className="h-12 text-base"
-                          data-testid="input-video-url"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                <div className="space-y-4">
+                  <FormLabel className="text-base">동영상 URL 목록</FormLabel>
+                  
+                  {videoUrls.length > 0 && (
+                    <div className="space-y-2">
+                      {videoUrls.map((url, idx) => (
+                        <div 
+                          key={idx} 
+                          className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg"
+                          data-testid={`video-url-item-${idx}`}
+                        >
+                          <Video className="h-4 w-4 text-accent shrink-0" />
+                          <span className="flex-1 text-sm truncate">{url}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeVideoUrl(idx)}
+                            data-testid={`button-remove-video-${idx}`}
+                          >
+                            <X className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                />
+                  
+                  <div className="flex gap-2">
+                    <Input 
+                      value={newVideoUrl}
+                      onChange={(e) => setNewVideoUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..." 
+                      className="h-12 text-base flex-1"
+                      data-testid="input-video-url"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addVideoUrl();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      onClick={addVideoUrl}
+                      className="h-12 px-6"
+                      disabled={!newVideoUrl.trim()}
+                      data-testid="button-add-video-url"
+                    >
+                      <Plus className="h-5 w-5 mr-1" />
+                      추가
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    URL을 입력하고 '추가' 버튼을 눌러 여러 동영상을 등록할 수 있습니다. ({videoUrls.length}개 등록됨)
+                  </p>
+                </div>
               )}
 
               {materialType === "card" && (
