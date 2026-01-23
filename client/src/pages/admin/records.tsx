@@ -38,6 +38,7 @@ export default function AdminRecords() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSite, setSelectedSite] = useState<string>("all");
   const [selectedGuard, setSelectedGuard] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<"all" | "by-guard" | "by-site">("all");
 
   const { data: records = [], isLoading: recordsLoading } = useQuery<TrainingRecordWithGuard[]>({
     queryKey: ["/api/training-records"],
@@ -179,12 +180,24 @@ export default function AdminRecords() {
           </div>
           <Button 
             size="lg" 
-            onClick={() => exportToPDF("all")}
+            onClick={() => {
+              if (activeTab === "all") {
+                exportToPDF("all");
+              } else if (activeTab === "by-guard" && selectedGuard !== "all") {
+                exportToPDF("guard", selectedGuard);
+              } else if (activeTab === "by-site" && selectedSite !== "all") {
+                exportToPDF("site", selectedSite);
+              } else {
+                exportToPDF("all");
+              }
+            }}
             className="text-lg"
-            data-testid="button-export-all-pdf"
+            data-testid="button-export-pdf"
           >
             <Download className="h-5 w-5 mr-2" />
-            전체 PDF 다운로드
+            {activeTab === "all" && "전체 PDF 다운로드"}
+            {activeTab === "by-guard" && (selectedGuard !== "all" ? "경비원별 PDF 다운로드" : "전체 PDF 다운로드")}
+            {activeTab === "by-site" && (selectedSite !== "all" ? "현장별 PDF 다운로드" : "전체 PDF 다운로드")}
           </Button>
         </div>
 
@@ -237,11 +250,11 @@ export default function AdminRecords() {
             <Skeleton className="h-64 w-full" />
           </div>
         ) : (
-          <Tabs defaultValue="all" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "all" | "by-guard" | "by-site")} className="space-y-6">
             <TabsList className="h-14">
-              <TabsTrigger value="all" className="text-lg px-6 h-12">전체 내역</TabsTrigger>
-              <TabsTrigger value="by-guard" className="text-lg px-6 h-12">경비원별</TabsTrigger>
-              <TabsTrigger value="by-site" className="text-lg px-6 h-12">현장별</TabsTrigger>
+              <TabsTrigger value="all" className="text-lg px-6 h-12" data-testid="tab-all">전체 내역</TabsTrigger>
+              <TabsTrigger value="by-guard" className="text-lg px-6 h-12" data-testid="tab-by-guard">경비원별</TabsTrigger>
+              <TabsTrigger value="by-site" className="text-lg px-6 h-12" data-testid="tab-by-site">현장별</TabsTrigger>
             </TabsList>
 
             <TabsContent value="all">
