@@ -22,9 +22,9 @@ export function NotificationBadge() {
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  const markAsReadMutation = useMutation({
+  const deleteNotificationMutation = useMutation({
     mutationFn: async (notificationId: string) => {
-      await apiRequest("POST", `/api/notifications/${notificationId}/read`);
+      await apiRequest("DELETE", `/api/notifications/${notificationId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
@@ -87,10 +87,10 @@ export function NotificationBadge() {
                   className={`p-4 hover-elevate cursor-pointer ${
                     !notification.isRead ? "bg-primary/5" : ""
                   }`}
-                  onClick={() => {
-                    if (!notification.isRead) {
-                      markAsReadMutation.mutate(notification.id);
-                    }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // 클릭 시 알림 삭제
+                    deleteNotificationMutation.mutate(notification.id);
                   }}
                   data-testid={`notification-item-${notification.id}`}
                 >

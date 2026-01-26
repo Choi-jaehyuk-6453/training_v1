@@ -45,7 +45,10 @@ export default function GuardDashboard() {
   const { toast } = useToast();
   const [selectedMaterial, setSelectedMaterial] = useState<TrainingMaterial | null>(null);
   const [cardViewerOpen, setCardViewerOpen] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  
+  // 현재 월을 기본값으로 설정
+  const currentMonth = (new Date().getMonth() + 1).toString();
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonth);
 
   const { data: materials = [], isLoading: materialsLoading } = useQuery<TrainingMaterial[]>({
     queryKey: ["/api/training-materials"],

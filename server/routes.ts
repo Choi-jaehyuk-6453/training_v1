@@ -373,6 +373,9 @@ export async function registerRoutes(
         materialTitle,
       });
       
+      // 이수 완료 시 해당 자료의 알림 삭제
+      await storage.deleteNotificationByMaterialAndGuard(materialId, req.session.userId);
+      
       return res.json(record);
     } catch (error) {
       console.error("Create record error:", error);
@@ -407,6 +410,21 @@ export async function registerRoutes(
       return res.json({ message: "읽음 처리 완료" });
     } catch (error) {
       console.error("Mark notification read error:", error);
+      return res.status(500).json({ message: "서버 오류" });
+    }
+  });
+
+  // 알림 삭제 (클릭 시) - 본인 알림만 삭제 가능
+  app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+    try {
+      if (!req.session.userId) {
+        return res.status(401).json({ message: "로그인이 필요합니다" });
+      }
+      
+      await storage.deleteNotificationIfOwner(req.params.id, req.session.userId);
+      return res.json({ message: "알림 삭제 완료" });
+    } catch (error) {
+      console.error("Delete notification error:", error);
       return res.status(500).json({ message: "서버 오류" });
     }
   });

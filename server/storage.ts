@@ -39,6 +39,9 @@ export interface IStorage {
   markNotificationAsRead(id: string): Promise<void>;
   markAllNotificationsAsRead(guardId: string): Promise<void>;
   createNotificationsForAllGuards(materialId: string): Promise<void>;
+  deleteNotification(id: string): Promise<void>;
+  deleteNotificationIfOwner(id: string, guardId: string): Promise<void>;
+  deleteNotificationByMaterialAndGuard(materialId: string, guardId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -165,6 +168,28 @@ export class DatabaseStorage implements IStorage {
     if (notificationValues.length > 0) {
       await db.insert(notifications).values(notificationValues);
     }
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    await db.delete(notifications).where(eq(notifications.id, id));
+  }
+
+  async deleteNotificationIfOwner(id: string, guardId: string): Promise<void> {
+    await db.delete(notifications).where(
+      and(
+        eq(notifications.id, id),
+        eq(notifications.guardId, guardId)
+      )
+    );
+  }
+
+  async deleteNotificationByMaterialAndGuard(materialId: string, guardId: string): Promise<void> {
+    await db.delete(notifications).where(
+      and(
+        eq(notifications.materialId, materialId),
+        eq(notifications.guardId, guardId)
+      )
+    );
   }
 }
 

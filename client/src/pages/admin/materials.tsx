@@ -94,7 +94,20 @@ export default function AdminMaterials() {
 
   const filteredMaterials = useMemo(() => {
     if (selectedMonthFilter === "all") return materials;
-    return materials.filter((m) => m.month === selectedMonthFilter);
+    
+    return materials.filter((m) => {
+      // 월별 자료는 해당 월과 일치하면 표시
+      if (m.month === selectedMonthFilter) return true;
+      
+      // 수시 자료는 등록 날짜(createdAt)의 월과 일치하면 표시
+      if (m.month === "수시" && m.createdAt) {
+        const createdMonth = new Date(m.createdAt).getMonth() + 1;
+        const filterMonth = parseInt(selectedMonthFilter.replace("월", ""));
+        return createdMonth === filterMonth;
+      }
+      
+      return false;
+    });
   }, [materials, selectedMonthFilter]);
 
   const form = useForm<MaterialForm>({
