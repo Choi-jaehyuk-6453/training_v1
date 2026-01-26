@@ -120,7 +120,6 @@ export default function LoginPage() {
               </div>
 
               <div className="text-center text-sm text-muted-foreground space-y-1 pt-2">
-                <p>관리자: 아이디 "관리자" / 비밀번호 "admin123"</p>
                 <p>경비원: 아이디 "이름" / 비밀번호 "전화번호 뒷 4자리"</p>
               </div>
             </form>
