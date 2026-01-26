@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -12,7 +12,8 @@ import {
   BookOpen, 
   Video,
   Upload,
-  X
+  X,
+  Calendar
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,10 +86,16 @@ export default function AdminMaterials() {
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [newVideoUrl, setNewVideoUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>("all");
 
   const { data: materials = [], isLoading } = useQuery<TrainingMaterial[]>({
     queryKey: ["/api/training-materials"],
   });
+
+  const filteredMaterials = useMemo(() => {
+    if (selectedMonthFilter === "all") return materials;
+    return materials.filter((m) => m.month === selectedMonthFilter);
+  }, [materials, selectedMonthFilter]);
 
   const form = useForm<MaterialForm>({
     resolver: zodResolver(materialSchema),
@@ -299,6 +306,31 @@ export default function AdminMaterials() {
           </Button>
         </div>
 
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <Calendar className="h-5 w-5 text-primary" />
+                <span className="font-medium text-lg">월별 조회:</span>
+              </div>
+              <Select value={selectedMonthFilter} onValueChange={setSelectedMonthFilter}>
+                <SelectTrigger className="w-[200px] h-12 text-base" data-testid="select-month-filter">
+                  <SelectValue placeholder="월 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체</SelectItem>
+                  {MONTHS.map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-muted-foreground">
+                총 {filteredMaterials.length}개
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
         {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -313,9 +345,13 @@ export default function AdminMaterials() {
               첫 번째 자료 추가하기
             </Button>
           </Card>
+        ) : filteredMaterials.length === 0 ? (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground text-lg">선택한 월에 등록된 교육 자료가 없습니다</p>
+          </Card>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {materials.map((material) => (
+            {filteredMaterials.map((material) => (
               <Card key={material.id} className="relative" data-testid={`material-card-${material.id}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">

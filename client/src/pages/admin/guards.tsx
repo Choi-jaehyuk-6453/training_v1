@@ -68,6 +68,7 @@ export default function AdminGuards() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingGuard, setEditingGuard] = useState<GuardWithSite | null>(null);
   const [deletingGuard, setDeletingGuard] = useState<GuardWithSite | null>(null);
+  const [selectedSiteFilter, setSelectedSiteFilter] = useState<string>("all");
 
   const { data: guards = [], isLoading } = useQuery<GuardWithSite[]>({
     queryKey: ["/api/guards"],
@@ -90,10 +91,16 @@ export default function AdminGuards() {
   const selectedCompany = form.watch("company");
   const filteredSites = sites.filter((site) => site.company === selectedCompany);
 
+  const filteredGuards = useMemo(() => {
+    if (selectedSiteFilter === "all") return guards;
+    if (selectedSiteFilter === "unassigned") return guards.filter(g => !g.siteId);
+    return guards.filter(g => g.siteId === selectedSiteFilter);
+  }, [guards, selectedSiteFilter]);
+
   const guardsBySite = useMemo(() => {
     const grouped: Record<string, GuardWithSite[]> = {};
     
-    guards.forEach((guard) => {
+    filteredGuards.forEach((guard) => {
       const siteId = guard.siteId || "unassigned";
       if (!grouped[siteId]) {
         grouped[siteId] = [];
@@ -102,7 +109,7 @@ export default function AdminGuards() {
     });
     
     return grouped;
-  }, [guards]);
+  }, [filteredGuards]);
 
   const createMutation = useMutation({
     mutationFn: async (data: GuardForm) => {
@@ -231,6 +238,34 @@ export default function AdminGuards() {
           </Button>
         </div>
 
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <MapPin className="h-5 w-5 text-primary" />
+                <span className="font-medium text-lg">현장별 조회:</span>
+              </div>
+              <Select value={selectedSiteFilter} onValueChange={setSelectedSiteFilter}>
+                <SelectTrigger className="w-[250px] h-12 text-base" data-testid="select-site-filter">
+                  <SelectValue placeholder="현장 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체 현장</SelectItem>
+                  <SelectItem value="unassigned">현장 미배정</SelectItem>
+                  {sites.map((site) => (
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.name} ({site.company === "mirae_abm" ? "미래에이비엠" : "다원PMC"})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-muted-foreground">
+                총 {filteredGuards.length}명
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
         {isLoading ? (
           <div className="space-y-6">
             {[1, 2, 3].map((i) => (
@@ -244,6 +279,10 @@ export default function AdminGuards() {
               <Plus className="h-5 w-5 mr-2" />
               첫 번째 경비원 추가하기
             </Button>
+          </Card>
+        ) : filteredGuards.length === 0 ? (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground text-lg">선택한 현장에 등록된 경비원이 없습니다</p>
           </Card>
         ) : (
           <div className="space-y-6">

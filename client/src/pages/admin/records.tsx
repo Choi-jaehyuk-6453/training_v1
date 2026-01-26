@@ -1,7 +1,23 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Download, Search, User, MapPin, FileText } from "lucide-react";
+import { ArrowLeft, Download, Search, User, MapPin, FileText, Calendar } from "lucide-react";
+
+const MONTHS = [
+  { value: "all", label: "전체" },
+  { value: "1", label: "1월" },
+  { value: "2", label: "2월" },
+  { value: "3", label: "3월" },
+  { value: "4", label: "4월" },
+  { value: "5", label: "5월" },
+  { value: "6", label: "6월" },
+  { value: "7", label: "7월" },
+  { value: "8", label: "8월" },
+  { value: "9", label: "9월" },
+  { value: "10", label: "10월" },
+  { value: "11", label: "11월" },
+  { value: "12", label: "12월" },
+];
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,6 +54,7 @@ export default function AdminRecords() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSite, setSelectedSite] = useState<string>("all");
   const [selectedGuard, setSelectedGuard] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"all" | "by-guard" | "by-site">("all");
 
   const { data: records = [], isLoading: recordsLoading } = useQuery<TrainingRecordWithGuard[]>({
@@ -66,9 +83,15 @@ export default function AdminRecords() {
       const matchesGuard = 
         selectedGuard === "all" || record.guardId === selectedGuard;
 
-      return matchesSearch && matchesSite && matchesGuard;
+      const matchesMonth = selectedMonth === "all" || (() => {
+        const completedDate = new Date(record.completedAt);
+        const recordMonth = (completedDate.getMonth() + 1).toString();
+        return recordMonth === selectedMonth;
+      })();
+
+      return matchesSearch && matchesSite && matchesGuard && matchesMonth;
     });
-  }, [records, searchTerm, selectedSite, selectedGuard]);
+  }, [records, searchTerm, selectedSite, selectedGuard, selectedMonth]);
 
   const recordsByGuard = useMemo(() => {
     const grouped: Record<string, TrainingRecordWithGuard[]> = {};
@@ -236,6 +259,18 @@ export default function AdminRecords() {
                   {guards.map((guard) => (
                     <SelectItem key={guard.id} value={guard.id}>
                       {guard.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[160px] h-12 text-base" data-testid="select-month-filter">
+                  <SelectValue placeholder="월 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((month) => (
+                    <SelectItem key={month.value} value={month.value}>
+                      {month.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
