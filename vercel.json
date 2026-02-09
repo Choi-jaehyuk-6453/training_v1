@@ -12,7 +12,7 @@
     ],
     "functions": {
         "api/index.ts": {
-            "includeFiles": "server/**, shared/**"
+            "includeFiles": "dist-server/**"
         }
     }
 }

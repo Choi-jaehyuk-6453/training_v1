@@ -1,6 +1,5 @@
 import { createServer } from "http";
 import express from "express";
-import { registerRoutes } from "../server/routes";
 
 const app = express();
 const server = createServer(app);
@@ -15,11 +14,20 @@ export default async function handler(req: any, res: any) {
                 throw new Error("DATABASE_URL is missing in environment variables");
             }
 
-            // Vercel handles body parsing, but we might need these for Express
-            app.use(express.json());
-            app.use(express.urlencoded({ extended: false }));
+            // Import the bundled server code
+            // We use require() to load the CJS bundle from dist-server/index.cjs
+            // This bypasses Vercel's issue with bundling TS files from outside api/
+            const serverModule = require("../dist-server/index.cjs");
+            const { app: serverApp, init } = serverModule;
 
-            await registerRoutes(server, app);
+            // Initialize the server (db connection, middleware, routes)
+            await init();
+
+            // Mount the server app's routes to our handler app
+            // Or we can just use serverApp(req, res) if we want to bypass this app.
+            // But let's mount it to keep vercel body parsing + our app structure.
+            app.use(serverApp);
+
             initialized = true;
         }
 
