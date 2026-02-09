@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
-import { Link } from "wouter";
+import { useState, useMemo, useEffect } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Download, Search, User, MapPin, FileText, Calendar } from "lucide-react";
+import { ArrowLeft, Download, Search, User, MapPin, FileText, Filter, AlertCircle, Clock, CheckCircle2 } from "lucide-react";
 
 const MONTHS = [
   { value: "all", label: "전체" },
@@ -40,7 +40,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CompanyLogo } from "@/components/CompanyLogo";
-import type { User as GuardUser, Site, TrainingRecord } from "@shared/schema";
+import type { User as GuardUser, Site, TrainingRecord, TrainingMaterial } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
 
 interface GuardWithSite extends GuardUser {
   site?: Site;
@@ -50,12 +51,34 @@ interface TrainingRecordWithGuard extends TrainingRecord {
   guard?: GuardWithSite;
 }
 
+type ComplianceStatus = "completed" | "in_progress" | "uncompleted" | "failed";
+
 export default function AdminRecords() {
+  const [, setLocation] = useLocation();
+
+  const getQueryParam = (param: string) => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      return searchParams.get(param);
+    } catch (e) {
+      return null;
+    }
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSite, setSelectedSite] = useState<string>("all");
   const [selectedGuard, setSelectedGuard] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedMaterial, setSelectedMaterial] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"all" | "by-guard" | "by-site">("all");
+
+  useEffect(() => {
+    const siteParam = getQueryParam("site");
+    if (siteParam) {
+      setSelectedSite(siteParam);
+      setActiveTab("by-site"); // Automatically switch tab if filtered by site
+    }
+  }, []);
 
   const { data: records = [], isLoading: recordsLoading } = useQuery<TrainingRecordWithGuard[]>({
     queryKey: ["/api/training-records"],
@@ -69,19 +92,30 @@ export default function AdminRecords() {
     queryKey: ["/api/sites"],
   });
 
-  const isLoading = recordsLoading || guardsLoading || sitesLoading;
+  const { data: materials = [], isLoading: materialsLoading } = useQuery<TrainingMaterial[]>({
+    queryKey: ["/api/training-materials"],
+  });
 
+  const isLoading = recordsLoading || guardsLoading || sitesLoading || materialsLoading;
+
+  // 1. Standard Filtering for generic view (showing existing records)
   const filteredRecords = useMemo(() => {
-    return records.filter((record) => {
-      const matchesSearch = 
+    let filtered = records.filter((record) => {
+      // Safe access to Guard Name
+      const guardName = record.guard ? record.guard.name : "";
+
+      const matchesSearch =
         record.materialTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.guard?.name.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesSite = 
+        guardName.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesSite =
         selectedSite === "all" || record.guard?.siteId === selectedSite;
-      
-      const matchesGuard = 
+
+      const matchesGuard =
         selectedGuard === "all" || record.guardId === selectedGuard;
+
+      const matchesMaterial =
+        selectedMaterial === "all" || record.materialId === selectedMaterial;
 
       const matchesMonth = selectedMonth === "all" || (() => {
         const completedDate = new Date(record.completedAt);
@@ -89,93 +123,117 @@ export default function AdminRecords() {
         return recordMonth === selectedMonth;
       })();
 
-      return matchesSearch && matchesSite && matchesGuard && matchesMonth;
+      return matchesSearch && matchesSite && matchesGuard && matchesMonth && matchesMaterial;
     });
-  }, [records, searchTerm, selectedSite, selectedGuard, selectedMonth]);
 
-  const recordsByGuard = useMemo(() => {
-    const grouped: Record<string, TrainingRecordWithGuard[]> = {};
-    filteredRecords.forEach((record) => {
-      const guardId = record.guardId;
-      if (!grouped[guardId]) {
-        grouped[guardId] = [];
-      }
-      grouped[guardId].push(record);
-    });
-    return grouped;
-  }, [filteredRecords]);
+    return filtered.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+  }, [records, searchTerm, selectedSite, selectedGuard, selectedMonth, selectedMaterial]);
 
-  const recordsBySite = useMemo(() => {
-    const grouped: Record<string, TrainingRecordWithGuard[]> = {};
-    filteredRecords.forEach((record) => {
-      const siteId = record.guard?.siteId || "unassigned";
-      if (!grouped[siteId]) {
-        grouped[siteId] = [];
-      }
-      grouped[siteId].push(record);
+  // 2. Compliance Logic (Only active when filtering by Specific Material)
+  const complianceData = useMemo(() => {
+    if (selectedMaterial === "all") return null;
+
+    // Filter guards based on site/search/etc first
+    const targetGuards = guards.filter(g => {
+      if (selectedSite !== "all" && g.siteId !== selectedSite) return false;
+      if (selectedGuard !== "all" && g.id !== selectedGuard) return false;
+      if (searchTerm && !g.name.includes(searchTerm)) return false;
+      return true;
     });
-    return grouped;
-  }, [filteredRecords]);
+
+    const materialRef = materials.find(m => m.id === selectedMaterial);
+
+    return targetGuards.map(guard => {
+      const userRecord = records.find(r => r.guardId === guard.id && r.materialId === selectedMaterial);
+
+      let status: ComplianceStatus = "uncompleted";
+      if (userRecord) {
+        if (userRecord.passed) status = "completed";
+        else if (userRecord.status === "started") status = "in_progress";
+        // Map "completed but failed" to "uncompleted" visual (or failed logic if needed)
+        else if (!userRecord.passed && userRecord.status === "completed") status = "uncompleted";
+        else status = "in_progress"; // Default fallback
+      }
+
+      return {
+        guard,
+        record: userRecord,
+        status,
+        materialTitle: materialRef?.title || "-"
+      };
+    }).sort((a, b) => {
+      // Sort Order: Uncompleted -> In Progress -> Failed -> Completed
+      const order = { "uncompleted": 0, "in_progress": 1, "failed": 2, "completed": 3 };
+      return order[a.status] - order[b.status];
+    });
+
+  }, [guards, records, selectedMaterial, selectedSite, selectedGuard, searchTerm, materials]);
+
 
   const exportToPDF = async (type: "all" | "guard" | "site", id?: string) => {
     const jsPDF = (await import("jspdf")).default;
     await import("jspdf-autotable");
 
     const doc = new jsPDF();
-    
     doc.addFont("https://cdn.jsdelivr.net/npm/nanum-gothic-font@1.0.0/NanumGothic.ttf", "NanumGothic", "normal");
-    
-    let title = "교육 이수 내역";
-    let dataToExport = filteredRecords;
 
-    if (type === "guard" && id) {
-      const guard = guards.find((g) => g.id === id);
-      title = `${guard?.name || "경비원"} - 교육 이수 내역`;
-      dataToExport = filteredRecords.filter((r) => r.guardId === id);
-    } else if (type === "site" && id) {
-      const site = sites.find((s) => s.id === id);
-      title = `${site?.name || "현장"} - 교육 이수 내역`;
-      dataToExport = filteredRecords.filter((r) => r.guard?.siteId === id);
+    let title = "교육 이수 내역";
+    let dataToExport: any[] = [];
+
+    // If viewing compliance list (specific material selected), export that view
+    if (selectedMaterial !== "all" && complianceData) {
+      title = `교육 이수 현황 - ${materials.find(m => m.id === selectedMaterial)?.title}`;
+      dataToExport = complianceData.map(item => ({
+        name: item.guard.name,
+        site: item.guard.site?.name || "-",
+        material: item.materialTitle,
+        status: item.status === "completed" ? "이수" : item.status === "in_progress" ? "진행중" : "미이수",
+        date: item.record ? new Date(item.record.completedAt).toLocaleDateString("ko-KR") : "-"
+      }));
+    } else {
+      // Standard Export
+      dataToExport = filteredRecords.map(r => ({
+        name: r.guard?.name || "-",
+        site: r.guard?.site?.name || "-",
+        material: r.materialTitle,
+        status: r.passed ? "이수" : r.status === "started" ? "진행중" : "미이수",
+        date: new Date(r.completedAt).toLocaleDateString("ko-KR")
+      }));
     }
 
     doc.setFontSize(18);
     doc.text(title, 14, 22);
-    
+
     doc.setFontSize(10);
     doc.text(`출력일: ${new Date().toLocaleDateString("ko-KR")}`, 14, 30);
-    doc.text(`총 ${dataToExport.length}건`, 14, 36);
+    doc.text(`총 ${dataToExport.length}명`, 14, 36);
 
-    const tableData = dataToExport.map((record) => [
-      record.guard?.name || "-",
-      record.guard?.site?.name || "-",
-      record.materialTitle,
-      record.materialType === "card" ? "카드형" : "동영상",
-      new Date(record.completedAt).toLocaleDateString("ko-KR"),
-      new Date(record.completedAt).toLocaleTimeString("ko-KR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+    const tableData = dataToExport.map((item) => [
+      item.name,
+      item.site,
+      item.material,
+      item.status,
+      item.date
     ]);
 
     (doc as any).autoTable({
       startY: 42,
-      head: [["경비원", "현장", "교육 내용", "유형", "일자", "시간"]],
+      head: [["경비원", "현장", "교육 내용", "상태", "일자"]],
       body: tableData,
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [30, 64, 175],
-        textColor: 255,
-        fontStyle: "bold",
-      },
-      alternateRowStyles: {
-        fillColor: [245, 247, 250],
-      },
+      styles: { fontSize: 9, cellPadding: 3, font: "NanumGothic" },
+      headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: "bold" },
     });
 
     doc.save(`${title}_${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
+  const getStatusBadge = (status: ComplianceStatus) => {
+    switch (status) {
+      case "completed": return <Badge className="bg-green-600 hover:bg-green-700"><CheckCircle2 className="w-3 h-3 mr-1" /> 이수</Badge>;
+      case "in_progress": return <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-200"><Clock className="w-3 h-3 mr-1" /> 진행중</Badge>;
+      case "failed": return <Badge variant="outline" className="text-muted-foreground border-dashed"><AlertCircle className="w-3 h-3 mr-1" /> 미이수</Badge>;
+      case "uncompleted": return <Badge variant="outline" className="text-muted-foreground border-dashed"><AlertCircle className="w-3 h-3 mr-1" /> 미이수</Badge>;
+    }
   };
 
   return (
@@ -198,80 +256,77 @@ export default function AdminRecords() {
           <div>
             <h1 className="text-3xl font-bold">교육 내역 조회</h1>
             <p className="text-muted-foreground text-lg">
-              경비원 개인별, 현장별 교육 이수 현황을 확인합니다
+              {selectedMaterial !== "all"
+                ? "선택한 교육 자료에 대한 전체 경비원 이수 현황입니다."
+                : "전체 교육 이수 기록을 조회합니다."}
             </p>
           </div>
-          <Button 
-            size="lg" 
-            onClick={() => {
-              if (activeTab === "all") {
-                exportToPDF("all");
-              } else if (activeTab === "by-guard" && selectedGuard !== "all") {
-                exportToPDF("guard", selectedGuard);
-              } else if (activeTab === "by-site" && selectedSite !== "all") {
-                exportToPDF("site", selectedSite);
-              } else {
-                exportToPDF("all");
-              }
-            }}
+          <Button
+            size="lg"
+            onClick={() => exportToPDF("all")}
             className="text-lg"
-            data-testid="button-export-pdf"
           >
             <Download className="h-5 w-5 mr-2" />
-            {activeTab === "all" && "전체 PDF 다운로드"}
-            {activeTab === "by-guard" && (selectedGuard !== "all" ? "경비원별 PDF 다운로드" : "전체 PDF 다운로드")}
-            {activeTab === "by-site" && (selectedSite !== "all" ? "현장별 PDF 다운로드" : "전체 PDF 다운로드")}
+            현황 PDF 다운로드
           </Button>
         </div>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-4">
             <div className="flex flex-wrap gap-4">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder="이름 또는 교육 내용 검색..."
+                  placeholder="이름 검색..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 h-12 text-base"
-                  data-testid="input-search"
                 />
               </div>
               <Select value={selectedSite} onValueChange={setSelectedSite}>
-                <SelectTrigger className="w-[200px] h-12 text-base" data-testid="select-site-filter">
+                <SelectTrigger className="w-[180px] h-12 text-base" >
                   <SelectValue placeholder="현장 선택" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 현장</SelectItem>
                   {sites.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>
-                      {site.name}
-                    </SelectItem>
+                    <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select value={selectedGuard} onValueChange={setSelectedGuard}>
-                <SelectTrigger className="w-[200px] h-12 text-base" data-testid="select-guard-filter">
+                <SelectTrigger className="w-[180px] h-12 text-base">
                   <SelectValue placeholder="경비원 선택" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 경비원</SelectItem>
                   {guards.map((guard) => (
-                    <SelectItem key={guard.id} value={guard.id}>
-                      {guard.name}
-                    </SelectItem>
+                    <SelectItem key={guard.id} value={guard.id}>{guard.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <Select value={selectedMaterial} onValueChange={setSelectedMaterial}>
+                <SelectTrigger className="flex-1 min-w-[200px] h-12 text-base border-primary/50 bg-primary/5">
+                  <SelectValue placeholder="교육 내용(자료) 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체 교육 내용</SelectItem>
+                  {materials.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="w-[160px] h-12 text-base" data-testid="select-month-filter">
+                <SelectTrigger className="w-[160px] h-12 text-base">
                   <SelectValue placeholder="월 선택" />
                 </SelectTrigger>
                 <SelectContent>
                   {MONTHS.map((month) => (
-                    <SelectItem key={month.value} value={month.value}>
-                      {month.label}
-                    </SelectItem>
+                    <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -285,207 +340,79 @@ export default function AdminRecords() {
             <Skeleton className="h-64 w-full" />
           </div>
         ) : (
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "all" | "by-guard" | "by-site")} className="space-y-6">
-            <TabsList className="h-14">
-              <TabsTrigger value="all" className="text-lg px-6 h-12" data-testid="tab-all">전체 내역</TabsTrigger>
-              <TabsTrigger value="by-guard" className="text-lg px-6 h-12" data-testid="tab-by-guard">경비원별</TabsTrigger>
-              <TabsTrigger value="by-site" className="text-lg px-6 h-12" data-testid="tab-by-site">현장별</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="all">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-xl flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    전체 교육 이수 내역
-                  </CardTitle>
-                  <CardDescription>
-                    총 {filteredRecords.length}건의 기록
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {filteredRecords.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      교육 이수 기록이 없습니다
-                    </div>
-                  ) : (
-                    <ScrollArea className="h-[500px]">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-base">경비원</TableHead>
-                            <TableHead className="text-base">현장</TableHead>
-                            <TableHead className="text-base">교육 내용</TableHead>
-                            <TableHead className="text-base">유형</TableHead>
-                            <TableHead className="text-base">일자</TableHead>
-                            <TableHead className="text-base">시간</TableHead>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                {selectedMaterial !== "all" ? "과목별 이수 현황 (전체 경비원)" : "교육 이수 기록"}
+              </CardTitle>
+              <CardDescription>
+                {selectedMaterial !== "all"
+                  ? `대상: ${complianceData?.length}명 | 정렬: 미이수 → 진행중 → 이수`
+                  : `총 ${filteredRecords.length}건의 이수 기록이 있습니다.`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[500px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-base w-[120px]">상태</TableHead>
+                      <TableHead className="text-base">경비원</TableHead>
+                      <TableHead className="text-base">현장</TableHead>
+                      <TableHead className="text-base">교육 내용</TableHead>
+                      <TableHead className="text-base">최종 활동 일자</TableHead>
+                      {selectedMaterial !== "all" && <TableHead className="text-base">점수</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedMaterial !== "all" && complianceData ? (
+                      // Compliance View (All Guards Logic)
+                      complianceData.map((item) => (
+                        <TableRow key={item.guard.id} className={item.status === "uncompleted" ? "bg-red-50/50" : ""}>
+                          <TableCell>{getStatusBadge(item.status)}</TableCell>
+                          <TableCell className="font-medium">{item.guard.name}</TableCell>
+                          <TableCell>{item.guard.site?.name || "-"}</TableCell>
+                          <TableCell>{item.materialTitle}</TableCell>
+                          <TableCell>
+                            {item.record ? new Date(item.record.completedAt).toLocaleDateString("ko-KR") : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {item.record?.score !== null && item.record?.score !== undefined ? `${item.record.score}점` : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      // Standard View (Existing Records Only)
+                      filteredRecords.length === 0 ? (
+                        <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">기록이 없습니다.</TableCell></TableRow>
+                      ) : (
+                        filteredRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>
+                              {record.passed ? (
+                                <Badge className="bg-green-600 hover:bg-green-700">이수</Badge>
+                              ) : record.status === "started" ? (
+                                <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-200">진행중</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-muted-foreground border-dashed">미이수</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-medium">{record.guard?.name || "알 수 없음"}</TableCell>
+                            <TableCell>{record.guard?.site?.name || "-"}</TableCell>
+                            <TableCell>{record.materialTitle}</TableCell>
+                            <TableCell>
+                              {new Date(record.completedAt).toLocaleDateString("ko-KR")}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredRecords.map((record) => (
-                            <TableRow key={record.id} data-testid={`record-row-${record.id}`}>
-                              <TableCell className="font-medium">{record.guard?.name || "-"}</TableCell>
-                              <TableCell>{record.guard?.site?.name || "-"}</TableCell>
-                              <TableCell>{record.materialTitle}</TableCell>
-                              <TableCell>
-                                {record.materialType === "card" ? "카드형" : "동영상"}
-                              </TableCell>
-                              <TableCell>
-                                {new Date(record.completedAt).toLocaleDateString("ko-KR")}
-                              </TableCell>
-                              <TableCell>
-                                {new Date(record.completedAt).toLocaleTimeString("ko-KR", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="by-guard" className="space-y-4">
-              {Object.keys(recordsByGuard).length === 0 ? (
-                <Card className="p-12 text-center">
-                  <p className="text-muted-foreground text-lg">교육 이수 기록이 없습니다</p>
-                </Card>
-              ) : (
-                Object.entries(recordsByGuard).map(([guardId, guardRecords]) => {
-                  const guard = guards.find((g) => g.id === guardId);
-                  return (
-                    <Card key={guardId} data-testid={`guard-records-${guardId}`}>
-                      <CardHeader>
-                        <div className="flex items-center justify-between flex-wrap gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
-                              <User className="h-6 w-6 text-accent" />
-                            </div>
-                            <div>
-                              <CardTitle className="text-xl">{guard?.name || "알 수 없음"}</CardTitle>
-                              <CardDescription>
-                                {guard?.site?.name || "현장 미배정"} · {guardRecords.length}건 이수
-                              </CardDescription>
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            onClick={() => exportToPDF("guard", guardId)}
-                            data-testid={`button-export-guard-${guardId}`}
-                          >
-                            <Download className="h-4 w-4 mr-2" />
-                            PDF 다운로드
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <ScrollArea className="h-48">
-                          <div className="space-y-2">
-                            {guardRecords.map((record) => (
-                              <div
-                                key={record.id}
-                                className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                              >
-                                <div>
-                                  <p className="font-medium">{record.materialTitle}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {record.materialType === "card" ? "카드형" : "동영상"}
-                                  </p>
-                                </div>
-                                <div className="text-right text-sm text-muted-foreground">
-                                  <p>{new Date(record.completedAt).toLocaleDateString("ko-KR")}</p>
-                                  <p>
-                                    {new Date(record.completedAt).toLocaleTimeString("ko-KR", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
-            </TabsContent>
-
-            <TabsContent value="by-site" className="space-y-4">
-              {Object.keys(recordsBySite).length === 0 ? (
-                <Card className="p-12 text-center">
-                  <p className="text-muted-foreground text-lg">교육 이수 기록이 없습니다</p>
-                </Card>
-              ) : (
-                Object.entries(recordsBySite).map(([siteId, siteRecords]) => {
-                  const site = sites.find((s) => s.id === siteId);
-                  const siteName = site?.name || "현장 미배정";
-                  return (
-                    <Card key={siteId} data-testid={`site-records-${siteId}`}>
-                      <CardHeader>
-                        <div className="flex items-center justify-between flex-wrap gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                              <MapPin className="h-6 w-6 text-green-500" />
-                            </div>
-                            <div>
-                              <CardTitle className="text-xl">{siteName}</CardTitle>
-                              <CardDescription>
-                                {siteRecords.length}건 이수
-                              </CardDescription>
-                            </div>
-                          </div>
-                          {siteId !== "unassigned" && (
-                            <Button
-                              variant="outline"
-                              onClick={() => exportToPDF("site", siteId)}
-                              data-testid={`button-export-site-${siteId}`}
-                            >
-                              <Download className="h-4 w-4 mr-2" />
-                              PDF 다운로드
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <ScrollArea className="h-48">
-                          <div className="space-y-2">
-                            {siteRecords.map((record) => (
-                              <div
-                                key={record.id}
-                                className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                              >
-                                <div>
-                                  <p className="font-medium">{record.materialTitle}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {record.guard?.name} · {record.materialType === "card" ? "카드형" : "동영상"}
-                                  </p>
-                                </div>
-                                <div className="text-right text-sm text-muted-foreground">
-                                  <p>{new Date(record.completedAt).toLocaleDateString("ko-KR")}</p>
-                                  <p>
-                                    {new Date(record.completedAt).toLocaleTimeString("ko-KR", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
-            </TabsContent>
-          </Tabs>
+                        ))
+                      )
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

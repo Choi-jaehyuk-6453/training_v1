@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -48,6 +48,8 @@ export const trainingMaterials = pgTable("training_materials", {
   videoUrl: text("video_url"),
   videoUrls: text("video_urls").array(),
   cardImages: text("card_images").array(),
+  audioUrls: text("audio_urls").array(),
+  quizzes: jsonb("quizzes"), // Use jsonb directly
   month: text("month").notNull().default("수시"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -65,6 +67,8 @@ export const trainingRecords = pgTable("training_records", {
   completedAt: timestamp("completed_at").defaultNow().notNull(),
   materialType: materialTypeEnum("material_type").notNull(),
   materialTitle: text("material_title").notNull(),
+  score: integer("score"),
+  passed: boolean("passed").default(false),
 });
 
 export const trainingRecordsRelations = relations(trainingRecords, ({ one }) => ({
@@ -98,7 +102,7 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
 }));
 
 export const insertSiteSchema = createInsertSchema(sites).omit({ id: true, createdAt: true });
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true });
 export const insertTrainingMaterialSchema = createInsertSchema(trainingMaterials).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTrainingRecordSchema = createInsertSchema(trainingRecords).omit({ id: true, completedAt: true });
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });

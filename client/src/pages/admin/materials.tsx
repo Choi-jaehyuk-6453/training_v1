@@ -4,16 +4,21 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { 
-  ArrowLeft, 
-  Plus, 
-  Pencil, 
-  Trash2, 
-  BookOpen, 
+import { supabase } from "@/lib/supabase";
+import {
+  ArrowLeft,
+  Plus,
+  Pencil,
+  Trash2,
+  BookOpen,
   Video,
   Upload,
   X,
-  Calendar
+  Calendar,
+  Music,
+  CheckSquare,
+  PlusCircle,
+  MinusCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,7 +65,7 @@ import { CompanyLogo } from "@/components/CompanyLogo";
 import type { TrainingMaterial } from "@shared/schema";
 
 const MONTHS = [
-  "수시", "1월", "2월", "3월", "4월", "5월", "6월", 
+  "수시", "1월", "2월", "3월", "4월", "5월", "6월",
   "7월", "8월", "9월", "10월", "11월", "12월"
 ];
 
@@ -72,6 +77,12 @@ const materialSchema = z.object({
   videoUrl: z.string().optional(),
   videoUrls: z.array(z.string()).optional(),
   cardImages: z.array(z.string()).optional(),
+  audioUrls: z.array(z.string()).optional(),
+  quizzes: z.array(z.object({
+    question: z.string(),
+    options: z.array(z.string()),
+    answer: z.number()
+  })).optional()
 });
 
 type MaterialForm = z.infer<typeof materialSchema>;
@@ -83,6 +94,8 @@ export default function AdminMaterials() {
   const [editingMaterial, setEditingMaterial] = useState<TrainingMaterial | null>(null);
   const [deletingMaterial, setDeletingMaterial] = useState<TrainingMaterial | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadedAudios, setUploadedAudios] = useState<string[]>([]);
+  const [quizzes, setQuizzes] = useState<{ question: string; options: string[]; answer: number; }[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [newVideoUrl, setNewVideoUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -94,18 +107,18 @@ export default function AdminMaterials() {
 
   const filteredMaterials = useMemo(() => {
     if (selectedMonthFilter === "all") return materials;
-    
+
     return materials.filter((m) => {
       // 월별 자료는 해당 월과 일치하면 표시
       if (m.month === selectedMonthFilter) return true;
-      
+
       // 수시 자료는 등록 날짜(createdAt)의 월과 일치하면 표시
       if (m.month === "수시" && m.createdAt) {
         const createdMonth = new Date(m.createdAt).getMonth() + 1;
         const filterMonth = parseInt(selectedMonthFilter.replace("월", ""));
         return createdMonth === filterMonth;
       }
-      
+
       return false;
     });
   }, [materials, selectedMonthFilter]);
@@ -120,6 +133,8 @@ export default function AdminMaterials() {
       videoUrl: "",
       videoUrls: [],
       cardImages: [],
+      audioUrls: [],
+      quizzes: [],
     },
   });
 
@@ -130,6 +145,8 @@ export default function AdminMaterials() {
       await apiRequest("POST", "/api/training-materials", {
         ...data,
         cardImages: materialType === "card" ? uploadedImages : [],
+        audioUrls: materialType === "card" ? uploadedAudios : [],
+        quizzes: quizzes,
         videoUrls: materialType === "video" ? videoUrls : [],
         videoUrl: materialType === "video" && videoUrls.length > 0 ? videoUrls[0] : data.videoUrl,
       });
@@ -153,6 +170,8 @@ export default function AdminMaterials() {
       await apiRequest("PATCH", `/api/training-materials/${editingMaterial?.id}`, {
         ...data,
         cardImages: materialType === "card" ? uploadedImages : [],
+        audioUrls: materialType === "card" ? uploadedAudios : [],
+        quizzes: quizzes,
         videoUrls: materialType === "video" ? videoUrls : [],
         videoUrl: materialType === "video" && videoUrls.length > 0 ? videoUrls[0] : data.videoUrl,
       });
@@ -187,49 +206,204 @@ export default function AdminMaterials() {
     },
   });
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  // Handle multiple image uploads with drag & drop support
+  const processFiles = async (files: File[]) => {
     setIsUploading(true);
+
+    // Split files
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    const audioFiles = files.filter(f => f.type.startsWith('audio/'));
+
+    // Sort by name (numeric aware)
+    imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    audioFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
     const newImages: string[] = [];
+    const newAudios: string[] = [];
 
-    for (const file of Array.from(files)) {
+    // Helper to upload a single file
+    const uploadFile = async (file: File) => {
       try {
-        const res = await fetch("/api/uploads/request-url", {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch("/api/uploads", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: file.name,
-            size: file.size,
-            contentType: file.type,
-          }),
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData,
         });
 
-        if (!res.ok) throw new Error("Failed to get upload URL");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `업로드 실패: ${res.statusText}`);
+        }
 
-        const { uploadURL, objectPath } = await res.json();
-
-        await fetch(uploadURL, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
-
-        newImages.push(objectPath);
-      } catch (error) {
+        const { objectPath } = await res.json();
+        return objectPath;
+      } catch (error: any) {
         console.error("Upload error:", error);
-        toast({ title: "오류", description: `${file.name} 업로드에 실패했습니다.`, variant: "destructive" });
+        toast({
+          title: "업로드 실패",
+          description: `${file.name}: ${error.message}`,
+          variant: "destructive",
+          duration: 5000
+        });
+        return null;
       }
+    };
+
+    // Upload Images
+    for (const file of imageFiles) {
+      const path = await uploadFile(file);
+      if (path) newImages.push(path);
     }
 
-    setUploadedImages((prev) => [...prev, ...newImages]);
+    // Upload Audios
+    for (const file of audioFiles) {
+      const path = await uploadFile(file);
+      if (path) newAudios.push(path);
+    }
+
+    if (newImages.length > 0) {
+      setUploadedImages((prev) => [...prev, ...newImages]);
+
+      // Determine audio slots
+      // 1. Extend existing audios with empty strings for new images
+      // 2. Fill these new slots with uploaded audios in order
+      setUploadedAudios((prev) => {
+        const next = [...prev, ...new Array(newImages.length).fill("")];
+
+        // Start filling from the index where new images begin
+        const startIndex = prev.length;
+
+        newAudios.forEach((audioPath, idx) => {
+          if (startIndex + idx < next.length) {
+            next[startIndex + idx] = audioPath;
+          }
+        });
+
+        return next;
+      });
+    } else if (newAudios.length > 0) {
+      setUploadedAudios((prev) => {
+        const next = [...prev];
+        let audioIdx = 0;
+
+        for (let i = 0; i < next.length && audioIdx < newAudios.length; i++) {
+          if (!next[i]) {
+            next[i] = newAudios[audioIdx++];
+          }
+        }
+        return next;
+      });
+    }
+
+    setIsUploading(false);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(Array.from(e.target.files));
+      e.target.value = ""; // Reset input
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleAudioUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+
+      const { objectPath } = await res.json();
+
+      setUploadedAudios((prev) => {
+        const newAudios = [...prev];
+        // Ensure array is large enough
+        while (newAudios.length <= index) {
+          newAudios.push("");
+        }
+        newAudios[index] = objectPath;
+        return newAudios;
+      });
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({ title: "오류", description: "오디오 업로드 실패", variant: "destructive" });
+    }
+    setIsUploading(false);
+    e.target.value = "";
+  };
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Video upload failed");
+
+      const { objectPath } = await res.json();
+
+      setVideoUrls((prev) => [...prev, objectPath]);
+      toast({ title: "성공", description: "동영상이 업로드되었습니다." });
+    } catch (error) {
+      console.error("Video upload error:", error);
+      toast({ title: "오류", description: "동영상 업로드 실패", variant: "destructive" });
+    }
     setIsUploading(false);
     e.target.value = "";
   };
 
   const removeImage = (index: number) => {
     setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+    setUploadedAudios((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addVideoUrl = () => {
@@ -246,7 +420,9 @@ export default function AdminMaterials() {
   const openCreateDialog = () => {
     setEditingMaterial(null);
     setUploadedImages([]);
+    setUploadedAudios([]);
     setVideoUrls([]);
+    setQuizzes([]);
     setNewVideoUrl("");
     form.reset({
       title: "",
@@ -256,6 +432,8 @@ export default function AdminMaterials() {
       videoUrl: "",
       videoUrls: [],
       cardImages: [],
+      audioUrls: [],
+      quizzes: [],
     });
     setDialogOpen(true);
   };
@@ -263,6 +441,8 @@ export default function AdminMaterials() {
   const openEditDialog = (material: TrainingMaterial) => {
     setEditingMaterial(material);
     setUploadedImages(material.cardImages || []);
+    setUploadedAudios(material.audioUrls || []);
+    setQuizzes((material.quizzes as any) || []);
     setVideoUrls(material.videoUrls || (material.videoUrl ? [material.videoUrl] : []));
     setNewVideoUrl("");
     form.reset({
@@ -273,6 +453,8 @@ export default function AdminMaterials() {
       videoUrl: material.videoUrl || "",
       videoUrls: material.videoUrls || [],
       cardImages: material.cardImages || [],
+      audioUrls: material.audioUrls || [],
+      quizzes: (material.quizzes as any) || [],
     });
     setDialogOpen(true);
   };
@@ -308,8 +490,8 @@ export default function AdminMaterials() {
               카드형 및 동영상 교육 자료를 관리합니다
             </p>
           </div>
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             onClick={openCreateDialog}
             className="text-lg"
             data-testid="button-add-material"
@@ -374,8 +556,8 @@ export default function AdminMaterials() {
                           <BookOpen className="h-5 w-5 text-primary" />
                         </div>
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                          <Video className="h-5 w-5 text-accent" />
+                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                          <Video className="h-5 w-5 text-red-600" />
                         </div>
                       )}
                       <Badge variant="secondary">
@@ -500,9 +682,9 @@ export default function AdminMaterials() {
                   <FormItem>
                     <FormLabel className="text-base">제목</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="교육 자료 제목" 
+                      <Input
+                        {...field}
+                        placeholder="교육 자료 제목"
                         className="h-12 text-base"
                         data-testid="input-title"
                       />
@@ -519,8 +701,8 @@ export default function AdminMaterials() {
                   <FormItem>
                     <FormLabel className="text-base">설명 (선택)</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
+                      <Textarea
+                        {...field}
                         placeholder="교육 자료에 대한 간단한 설명"
                         className="text-base min-h-20"
                         data-testid="input-description"
@@ -534,12 +716,12 @@ export default function AdminMaterials() {
               {materialType === "video" && (
                 <div className="space-y-4">
                   <FormLabel className="text-base">동영상 URL 목록</FormLabel>
-                  
+
                   {videoUrls.length > 0 && (
                     <div className="space-y-2">
                       {videoUrls.map((url, idx) => (
-                        <div 
-                          key={idx} 
+                        <div
+                          key={idx}
                           className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg"
                           data-testid={`video-url-item-${idx}`}
                         >
@@ -558,102 +740,261 @@ export default function AdminMaterials() {
                       ))}
                     </div>
                   )}
-                  
-                  <div className="flex gap-2">
-                    <Input 
-                      value={newVideoUrl}
-                      onChange={(e) => setNewVideoUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..." 
-                      className="h-12 text-base flex-1"
-                      data-testid="input-video-url"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addVideoUrl();
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      onClick={addVideoUrl}
-                      className="h-12 px-6"
-                      disabled={!newVideoUrl.trim()}
-                      data-testid="button-add-video-url"
-                    >
-                      <Plus className="h-5 w-5 mr-1" />
-                      추가
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    URL을 입력하고 '추가' 버튼을 눌러 여러 동영상을 등록할 수 있습니다. ({videoUrls.length}개 등록됨)
-                  </p>
-                </div>
-              )}
 
-              {materialType === "card" && (
-                <div className="space-y-4">
-                  <FormLabel className="text-base">카드 이미지</FormLabel>
-                  
-                  <div className="flex flex-wrap gap-3">
-                    {uploadedImages.map((img, idx) => (
-                      <div key={idx} className="relative w-24 h-24 bg-muted rounded-lg overflow-hidden">
-                        <img 
-                          src={img} 
-                          alt={`카드 ${idx + 1}`} 
-                          className="w-full h-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          className="absolute top-1 right-1 w-6 h-6 bg-destructive text-white rounded-full flex items-center justify-center"
-                          onClick={() => removeImage(idx)}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                        <span className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                          {idx + 1}
-                        </span>
+                  <div className="flex gap-2 items-start">
+                    <div className="flex-1 flex gap-2">
+                      <Input
+                        value={newVideoUrl}
+                        onChange={(e) => setNewVideoUrl(e.target.value)}
+                        placeholder="유튜브 링크 (https://...)"
+                        className="h-12 text-base flex-1"
+                        data-testid="input-video-url"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addVideoUrl();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        onClick={addVideoUrl}
+                        className="h-12 px-4"
+                        disabled={!newVideoUrl.trim()}
+                        data-testid="button-add-video-url"
+                        variant="secondary"
+                      >
+                        <Plus className="h-5 w-5 mr-1" />
+                        URL 추가
+                      </Button>
+                    </div>
+
+                    <div className="h-12 w-[1px] bg-border mx-1" />
+
+                    <label className="cursor-pointer">
+                      <div className="h-12 px-6 bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center rounded-md text-sm font-medium transition-colors shadow-sm">
+                        {isUploading ? (
+                          "업로드 중..."
+                        ) : (
+                          <>
+                            <Upload className="h-5 w-5 mr-2" />
+                            영상 파일 업로드
+                          </>
+                        )}
                       </div>
-                    ))}
-                    
-                    <label className="w-24 h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-                      <Upload className="h-6 w-6 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground mt-1">
-                        {isUploading ? "업로드 중..." : "이미지 추가"}
-                      </span>
                       <input
                         type="file"
-                        accept="image/*"
-                        multiple
+                        accept="video/mp4,video/webm"
                         className="hidden"
-                        onChange={handleFileUpload}
                         disabled={isUploading}
-                        data-testid="input-upload-images"
+                        onChange={handleVideoUpload}
                       />
                     </label>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    이미지를 순서대로 업로드해주세요. 경비원은 이 순서대로 카드를 넘기며 학습합니다.
-                  </p>
                 </div>
               )}
 
-              <DialogFooter className="gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                  className="h-12"
-                  data-testid="button-cancel"
-                >
+              {/* Card Images logic omitted for strict brevity compliance if needed, but here included fully */}
+              {materialType === "card" && (
+                <div className="space-y-4">
+                  <FormLabel className="text-base">카드 이미지 및 오디오</FormLabel>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isUploading ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary"
+                      }`}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                  >
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Upload className="h-10 w-10 text-muted-foreground mb-2" />
+                      <p className="text-lg font-medium">이미지와 오디오를 드래그하여 놓으세요</p>
+                      <p className="text-sm text-muted-foreground mb-4">또는 아래 버튼을 클릭하여 선택하세요</p>
+                      <label className="cursor-pointer">
+                        <div className="h-12 px-6 bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center rounded-md text-sm font-medium transition-colors shadow-sm">
+                          파일 선택
+                        </div>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,audio/*"
+                          className="hidden"
+                          disabled={isUploading}
+                          onChange={handleFileUpload}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {uploadedImages.length > 0 && (
+                    <div className="space-y-4 mt-6">
+                      {uploadedImages.map((img, idx) => (
+                        <div key={idx} className="flex gap-4 p-4 border rounded-lg bg-card shadow-sm items-start">
+                          <div className="w-24 h-24 shrink-0 rounded-md overflow-hidden bg-muted">
+                            <img src={img} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">페이지 {idx + 1}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                onClick={() => removeImage(idx)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {uploadedAudios[idx] ? (
+                                <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded w-full">
+                                  <Music className="h-4 w-4 shrink-0" />
+                                  <span className="truncate flex-1">오디오 파일 등록됨</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 shrink-0"
+                                    onClick={() => {
+                                      const newAudios = [...uploadedAudios];
+                                      newAudios[idx] = "";
+                                      setUploadedAudios(newAudios);
+                                    }}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 w-full">
+                                  <label className="cursor-pointer flex-1">
+                                    <div className="flex items-center justify-center gap-2 h-9 px-3 rounded text-sm border hover:bg-muted transition-colors w-full">
+                                      <PlusCircle className="h-4 w-4" />
+                                      오디오 추가
+                                    </div>
+                                    <input
+                                      type="file"
+                                      accept="audio/*"
+                                      className="hidden"
+                                      onChange={(e) => handleAudioUpload(idx, e)}
+                                      disabled={isUploading}
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Quiz Settings */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <FormLabel className="text-base">퀴즈 설정 (선택)</FormLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setQuizzes([...quizzes, { question: "", options: ["O", "X"], answer: 0 }])}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    퀴즈 추가
+                  </Button>
+                </div>
+                {quizzes.map((quiz, quizIdx) => (
+                  <Card key={quizIdx} className="p-4 relative">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 right-2 text-destructive"
+                      onClick={() => setQuizzes(quizzes.filter((_, i) => i !== quizIdx))}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>문제 {quizIdx + 1}</Label>
+                        <Input
+                          value={quiz.question}
+                          onChange={(e) => {
+                            const newQuizzes = [...quizzes];
+                            newQuizzes[quizIdx].question = e.target.value;
+                            setQuizzes(newQuizzes);
+                          }}
+                          placeholder="문제를 입력하세요"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>정답 (보기 {quiz.answer + 1})</Label>
+                        <RadioGroup
+                          value={quiz.answer.toString()}
+                          onValueChange={(val) => {
+                            const newQuizzes = [...quizzes];
+                            newQuizzes[quizIdx].answer = parseInt(val);
+                            setQuizzes(newQuizzes);
+                          }}
+                        >
+                          {quiz.options.map((opt, optIdx) => (
+                            <div key={optIdx} className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-1">
+                                <RadioGroupItem value={optIdx.toString()} id={`q${quizIdx}-o${optIdx}`} />
+                                <Input
+                                  value={opt}
+                                  onChange={(e) => {
+                                    const newQuizzes = [...quizzes];
+                                    newQuizzes[quizIdx].options[optIdx] = e.target.value;
+                                    setQuizzes(newQuizzes);
+                                  }}
+                                  className="h-8"
+                                />
+                              </div>
+                              {quiz.options.length > 2 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    const newQuizzes = [...quizzes];
+                                    newQuizzes[quizIdx].options = newQuizzes[quizIdx].options.filter((_, i) => i !== optIdx);
+                                    setQuizzes(newQuizzes);
+                                  }}
+                                >
+                                  <MinusCircle className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full mt-2"
+                            onClick={() => {
+                              const newQuizzes = [...quizzes];
+                              newQuizzes[quizIdx].options.push("");
+                              setQuizzes(newQuizzes);
+                            }}
+                          >
+                            <PlusCircle className="h-4 w-4 mr-2" />
+                            보기 추가
+                          </Button>
+                        </RadioGroup>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   취소
                 </Button>
-                <Button 
-                  type="submit" 
-                  className="h-12"
-                  disabled={createMutation.isPending || updateMutation.isPending || isUploading}
-                  data-testid="button-submit"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? "저장 중..." : "저장"}
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                  {editingMaterial ? "수정 저장" : "등록"}
                 </Button>
               </DialogFooter>
             </form>
@@ -666,15 +1007,18 @@ export default function AdminMaterials() {
           <AlertDialogHeader>
             <AlertDialogTitle>교육 자료 삭제</AlertDialogTitle>
             <AlertDialogDescription>
-              "{deletingMaterial?.title}" 자료를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+              정말 이 교육 자료를 삭제하시겠습니까? 관련 교육 이수 기록도 모두 삭제됩니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">취소</AlertDialogCancel>
+            <AlertDialogCancel>취소</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deletingMaterial && deleteMutation.mutate(deletingMaterial.id)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="button-confirm-delete"
+              onClick={() => {
+                if (deletingMaterial) {
+                  deleteMutation.mutate(deletingMaterial.id);
+                }
+              }}
             >
               삭제
             </AlertDialogAction>

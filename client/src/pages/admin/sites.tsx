@@ -67,9 +67,15 @@ export default function AdminSites() {
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [deletingSite, setDeletingSite] = useState<Site | null>(null);
 
+  const [selectedCompany, setSelectedCompany] = useState<"all" | "mirae_abm" | "dawon_pmc">("all");
+
   const { data: sites = [], isLoading } = useQuery<SiteWithGuards[]>({
     queryKey: ["/api/sites"],
   });
+
+  const filteredSites = sites.filter((site) =>
+    selectedCompany === "all" ? true : site.company === selectedCompany
+  );
 
   const form = useForm<SiteForm>({
     resolver: zodResolver(siteSchema),
@@ -155,7 +161,7 @@ export default function AdminSites() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" >
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="flex items-center justify-between p-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
@@ -164,7 +170,11 @@ export default function AdminSites() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <CompanyLogo company="mirae_abm" className="h-10" />
+            <div className="flex items-center gap-2">
+              <CompanyLogo company="mirae_abm" className="h-8" />
+              <span className="text-muted-foreground mx-2">|</span>
+              <CompanyLogo company="dawon_pmc" className="h-8" />
+            </div>
           </div>
         </div>
       </header>
@@ -177,15 +187,31 @@ export default function AdminSites() {
               경비 현장을 등록하고 관리합니다
             </p>
           </div>
-          <Button 
-            size="lg" 
-            onClick={openCreateDialog}
-            className="text-lg"
-            data-testid="button-add-site"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            현장 추가
-          </Button>
+          <div className="flex items-center gap-4">
+            <Select
+              value={selectedCompany}
+              onValueChange={(value: any) => setSelectedCompany(value)}
+            >
+              <SelectTrigger className="w-[180px] h-11">
+                <SelectValue placeholder="법인 전체" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 법인</SelectItem>
+                <SelectItem value="mirae_abm">미래에이비엠</SelectItem>
+                <SelectItem value="dawon_pmc">다원PMC</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              size="lg"
+              onClick={openCreateDialog}
+              className="text-lg"
+              data-testid="button-add-site"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              현장 추가
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -194,17 +220,19 @@ export default function AdminSites() {
               <Skeleton key={i} className="h-48" />
             ))}
           </div>
-        ) : sites.length === 0 ? (
+        ) : filteredSites.length === 0 ? (
           <Card className="p-12 text-center">
-            <p className="text-muted-foreground text-lg mb-4">등록된 현장이 없습니다</p>
+            <p className="text-muted-foreground text-lg mb-4">
+              {selectedCompany === "all" ? "등록된 현장이 없습니다" : "선택한 법인의 현장이 없습니다"}
+            </p>
             <Button onClick={openCreateDialog} data-testid="button-add-first-site">
               <Plus className="h-5 w-5 mr-2" />
-              첫 번째 현장 추가하기
+              현장 추가하기
             </Button>
           </Card>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sites.map((site) => (
+            {filteredSites.map((site) => (
               <Card key={site.id} data-testid={`site-card-${site.id}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -280,9 +308,9 @@ export default function AdminSites() {
                   <FormItem>
                     <FormLabel className="text-base">현장명</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="OO빌딩" 
+                      <Input
+                        {...field}
+                        placeholder="OO빌딩"
                         className="h-12 text-base"
                         data-testid="input-site-name"
                       />
@@ -321,9 +349,9 @@ export default function AdminSites() {
                   <FormItem>
                     <FormLabel className="text-base">주소 (선택)</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="서울시 강남구 ..." 
+                      <Input
+                        {...field}
+                        placeholder="서울시 강남구 ..."
                         className="h-12 text-base"
                         data-testid="input-site-address"
                       />
@@ -343,8 +371,8 @@ export default function AdminSites() {
                 >
                   취소
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="h-12"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-submit"
@@ -377,6 +405,6 @@ export default function AdminSites() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div >
   );
 }

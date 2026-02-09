@@ -69,6 +69,7 @@ export default function AdminGuards() {
   const [editingGuard, setEditingGuard] = useState<GuardWithSite | null>(null);
   const [deletingGuard, setDeletingGuard] = useState<GuardWithSite | null>(null);
   const [selectedSiteFilter, setSelectedSiteFilter] = useState<string>("all");
+  const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<"all" | "mirae_abm" | "dawon_pmc">("all");
 
   const { data: guards = [], isLoading } = useQuery<GuardWithSite[]>({
     queryKey: ["/api/guards"],
@@ -91,15 +92,34 @@ export default function AdminGuards() {
   const selectedCompany = form.watch("company");
   const filteredSites = sites.filter((site) => site.company === selectedCompany);
 
+  // Filter sites for the dropdown filter (based on selectedCompanyFilter)
+  const filterDropdownSites = sites.filter((site) =>
+    selectedCompanyFilter === "all" ? true : site.company === selectedCompanyFilter
+  );
+
   const filteredGuards = useMemo(() => {
-    if (selectedSiteFilter === "all") return guards;
-    if (selectedSiteFilter === "unassigned") return guards.filter(g => !g.siteId);
-    return guards.filter(g => g.siteId === selectedSiteFilter);
-  }, [guards, selectedSiteFilter]);
+    let result = guards;
+
+    // 1. Filter by Company
+    if (selectedCompanyFilter !== "all") {
+      result = result.filter(g => g.company === selectedCompanyFilter);
+    }
+
+    // 2. Filter by Site
+    if (selectedSiteFilter === "all") {
+      // Do nothing more
+    } else if (selectedSiteFilter === "unassigned") {
+      result = result.filter(g => !g.siteId);
+    } else {
+      result = result.filter(g => g.siteId === selectedSiteFilter);
+    }
+
+    return result;
+  }, [guards, selectedSiteFilter, selectedCompanyFilter]);
 
   const guardsBySite = useMemo(() => {
     const grouped: Record<string, GuardWithSite[]> = {};
-    
+
     filteredGuards.forEach((guard) => {
       const siteId = guard.siteId || "unassigned";
       if (!grouped[siteId]) {
@@ -107,7 +127,7 @@ export default function AdminGuards() {
       }
       grouped[siteId].push(guard);
     });
-    
+
     return grouped;
   }, [filteredGuards]);
 
@@ -214,7 +234,11 @@ export default function AdminGuards() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <CompanyLogo company="mirae_abm" className="h-10" />
+            <div className="flex items-center gap-2">
+              <CompanyLogo company="mirae_abm" className="h-8" />
+              <span className="text-muted-foreground mx-2">|</span>
+              <CompanyLogo company="dawon_pmc" className="h-8" />
+            </div>
           </div>
         </div>
       </header>
@@ -227,8 +251,8 @@ export default function AdminGuards() {
               경비원을 등록하고 관리합니다
             </p>
           </div>
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             onClick={openCreateDialog}
             className="text-lg"
             data-testid="button-add-guard"
@@ -242,6 +266,29 @@ export default function AdminGuards() {
           <CardContent className="p-4">
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-3">
+                <Building2 className="h-5 w-5 text-primary" />
+                <span className="font-medium text-lg">법인별 조회:</span>
+              </div>
+              <Select
+                value={selectedCompanyFilter}
+                onValueChange={(value: "all" | "mirae_abm" | "dawon_pmc") => {
+                  setSelectedCompanyFilter(value);
+                  setSelectedSiteFilter("all"); // Reset site filter when company changes
+                }}
+              >
+                <SelectTrigger className="w-[200px] h-12 text-base">
+                  <SelectValue placeholder="법인 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체 법인</SelectItem>
+                  <SelectItem value="mirae_abm">미래에이비엠</SelectItem>
+                  <SelectItem value="dawon_pmc">다원PMC</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="w-px h-8 bg-border mx-2" />
+
+              <div className="flex items-center gap-3">
                 <MapPin className="h-5 w-5 text-primary" />
                 <span className="font-medium text-lg">현장별 조회:</span>
               </div>
@@ -252,14 +299,14 @@ export default function AdminGuards() {
                 <SelectContent>
                   <SelectItem value="all">전체 현장</SelectItem>
                   <SelectItem value="unassigned">현장 미배정</SelectItem>
-                  {sites.map((site) => (
+                  {filterDropdownSites.map((site) => (
                     <SelectItem key={site.id} value={site.id}>
                       {site.name} ({site.company === "mirae_abm" ? "미래에이비엠" : "다원PMC"})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <span className="text-muted-foreground">
+              <span className="text-muted-foreground ml-auto">
                 총 {filteredGuards.length}명
               </span>
             </div>
@@ -290,7 +337,7 @@ export default function AdminGuards() {
               const site = sites.find((s) => s.id === siteId);
               const siteName = site?.name || "현장 미배정";
               const siteCompany = site?.company;
-              
+
               return (
                 <Card key={siteId} data-testid={`site-group-${siteId}`}>
                   <CardHeader className="pb-4">
@@ -316,8 +363,8 @@ export default function AdminGuards() {
                   <CardContent>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {siteGuards.map((guard) => (
-                        <div 
-                          key={guard.id} 
+                        <div
+                          key={guard.id}
                           className="p-4 bg-muted/30 rounded-lg"
                           data-testid={`guard-card-${guard.id}`}
                         >
@@ -387,9 +434,9 @@ export default function AdminGuards() {
                   <FormItem>
                     <FormLabel className="text-base">이름</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="홍길동" 
+                      <Input
+                        {...field}
+                        placeholder="홍길동"
                         className="h-12 text-base"
                         data-testid="input-guard-name"
                       />
@@ -407,9 +454,9 @@ export default function AdminGuards() {
                   <FormItem>
                     <FormLabel className="text-base">전화번호</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="010-1234-5678" 
+                      <Input
+                        {...field}
+                        placeholder="010-1234-5678"
                         className="h-12 text-base"
                         data-testid="input-guard-phone"
                       />
@@ -426,11 +473,11 @@ export default function AdminGuards() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">소속 회사</FormLabel>
-                    <Select 
+                    <Select
                       onValueChange={(value) => {
                         field.onChange(value);
                         form.setValue("siteId", "");
-                      }} 
+                      }}
                       defaultValue={field.value}
                     >
                       <FormControl>
@@ -454,8 +501,8 @@ export default function AdminGuards() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-base">근무 현장</FormLabel>
-                    <Select 
-                      onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)} 
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "__none__" ? "" : value)}
                       value={field.value || "__none__"}
                     >
                       <FormControl>
@@ -487,8 +534,8 @@ export default function AdminGuards() {
                 >
                   취소
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="h-12"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-submit"

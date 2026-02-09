@@ -1,4 +1,4 @@
-import { 
+import {
   users, sites, trainingMaterials, trainingRecords, notifications,
   type User, type InsertUser,
   type Site, type InsertSite,
@@ -16,24 +16,24 @@ export interface IStorage {
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   deleteUser(id: string): Promise<void>;
   getGuards(): Promise<User[]>;
-  
+
   getSites(): Promise<Site[]>;
   getSite(id: string): Promise<Site | undefined>;
   createSite(site: InsertSite): Promise<Site>;
   updateSite(id: string, site: Partial<InsertSite>): Promise<Site | undefined>;
   deleteSite(id: string): Promise<void>;
-  
+
   getTrainingMaterials(): Promise<TrainingMaterial[]>;
   getTrainingMaterial(id: string): Promise<TrainingMaterial | undefined>;
   createTrainingMaterial(material: InsertTrainingMaterial): Promise<TrainingMaterial>;
   updateTrainingMaterial(id: string, material: Partial<InsertTrainingMaterial>): Promise<TrainingMaterial | undefined>;
   deleteTrainingMaterial(id: string): Promise<void>;
-  
+
   getTrainingRecords(): Promise<TrainingRecord[]>;
   getTrainingRecordsByGuard(guardId: string): Promise<TrainingRecord[]>;
   createTrainingRecord(record: InsertTrainingRecord): Promise<TrainingRecord>;
   deleteTrainingRecord(id: string): Promise<void>;
-  
+
   getNotificationsByGuard(guardId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<void>;
@@ -42,6 +42,7 @@ export interface IStorage {
   deleteNotification(id: string): Promise<void>;
   deleteNotificationIfOwner(id: string, guardId: string): Promise<void>;
   deleteNotificationByMaterialAndGuard(materialId: string, guardId: string): Promise<void>;
+  getTrainingStats(): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -164,7 +165,7 @@ export class DatabaseStorage implements IStorage {
       materialId,
       isRead: false,
     }));
-    
+
     if (notificationValues.length > 0) {
       await db.insert(notifications).values(notificationValues);
     }
@@ -190,6 +191,33 @@ export class DatabaseStorage implements IStorage {
         eq(notifications.guardId, guardId)
       )
     );
+  }
+  async getTrainingStats(): Promise<any> {
+    const allSites = await db.select().from(sites);
+    const allGuards = await db.select().from(users).where(eq(users.role, "guard"));
+    const allMaterials = await db.select().from(trainingMaterials);
+    const allRecords = await db.select().from(trainingRecords);
+
+    const stats = allSites.map(site => {
+      const siteGuards = allGuards.filter(g => g.siteId === site.id);
+      const guardIds = siteGuards.map(g => g.id);
+
+      const totalRequired = siteGuards.length * allMaterials.length;
+
+      const siteRecords = allRecords.filter(r => guardIds.includes(r.guardId));
+      const completed = siteRecords.length;
+
+      const rate = totalRequired > 0 ? Math.round((completed / totalRequired) * 100) : 0;
+
+      return {
+        name: site.name,
+        completionRate: rate,
+        totalGuards: siteGuards.length,
+        completed: completed
+      };
+    });
+
+    return stats.sort((a, b) => b.completionRate - a.completionRate);
   }
 }
 

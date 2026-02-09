@@ -6,19 +6,23 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "@/hooks/use-toast";
 import GuardDashboard from "@/pages/guard/dashboard";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminMaterials from "@/pages/admin/materials";
+import TrainingView from "@/pages/guard/training";
 import AdminSites from "@/pages/admin/sites";
 import AdminGuards from "@/pages/admin/guards";
 import AdminRecords from "@/pages/admin/records";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function ProtectedRoute({ 
-  children, 
-  requiredRole 
-}: { 
-  children: React.ReactNode; 
+function ProtectedRoute({
+  children,
+  requiredRole
+}: {
+  children: React.ReactNode;
   requiredRole?: "admin" | "guard";
 }) {
   const { user, isLoading } = useAuth();
@@ -49,6 +53,35 @@ function ProtectedRoute({
 function Router() {
   const { user, isLoading } = useAuth();
 
+  // Realtime Notification Subscription - MUST be before any early returns
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `guard_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+          toast({
+            title: "새로운 알림",
+            description: "새로운 교육 자료가 도착했습니다.",
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -74,6 +107,12 @@ function Router() {
       <Route path="/guard">
         <ProtectedRoute requiredRole="guard">
           <GuardDashboard />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/guard/training/:id">
+        <ProtectedRoute requiredRole="guard">
+          <TrainingView />
         </ProtectedRoute>
       </Route>
 

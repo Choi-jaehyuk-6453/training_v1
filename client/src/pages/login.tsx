@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { CompanyLogo } from "@/components/CompanyLogo";
 
 const loginSchema = z.object({
@@ -21,7 +21,6 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
-  const { login } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -35,21 +34,44 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
-    const result = await login(data.username, data.password);
-    setIsLoading(false);
 
-    if (result.success && result.user) {
+    try {
+      // Server-side login (handles Korean username -> Phone conversion)
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: data.username,
+          password: data.password,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "로그인 실패");
+      }
+
+      const { session } = await res.json();
+
+      // Update Supabase client session
+      const { error } = await supabase.auth.setSession(session);
+
+      if (error) throw error;
+
       toast({
         title: "로그인 성공",
         description: "환영합니다!",
       });
-      navigate(result.user.role === "admin" ? "/admin" : "/guard");
-    } else {
+
+      // Navigation is handled by AuthContext effect
+    } catch (error: any) {
       toast({
         title: "로그인 실패",
-        description: result.message,
+        description: error.message || "아이디 또는 비밀번호를 확인해주세요",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -75,8 +97,8 @@ export default function LoginPage() {
                   <FormItem>
                     <FormLabel className="text-lg">아이디</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
+                      <Input
+                        {...field}
                         placeholder="이름 또는 관리자"
                         className="h-14 text-lg"
                         data-testid="input-username"
@@ -94,8 +116,8 @@ export default function LoginPage() {
                   <FormItem>
                     <FormLabel className="text-lg">비밀번호</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
+                      <Input
+                        {...field}
                         type="password"
                         placeholder="비밀번호 입력"
                         className="h-14 text-lg"
@@ -108,8 +130,8 @@ export default function LoginPage() {
               />
 
               <div className="pt-4">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full h-16 text-xl gap-3"
                   disabled={isLoading}
                   data-testid="button-login"

@@ -45,7 +45,7 @@ export default function GuardDashboard() {
   const { toast } = useToast();
   const [selectedMaterial, setSelectedMaterial] = useState<TrainingMaterial | null>(null);
   const [cardViewerOpen, setCardViewerOpen] = useState(false);
-  
+
   // 현재 월을 기본값으로 설정
   const currentMonth = (new Date().getMonth() + 1).toString();
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonth);
@@ -62,7 +62,7 @@ export default function GuardDashboard() {
 
   const filteredMaterials = useMemo(() => {
     if (selectedMonth === "all") return materials;
-    
+
     return materials.filter((material) => {
       const createdDate = new Date(material.createdAt);
       const materialMonth = (createdDate.getMonth() + 1).toString();
@@ -97,16 +97,11 @@ export default function GuardDashboard() {
   });
 
   const handleMaterialClick = (material: TrainingMaterial) => {
-    if (material.type === "video" && material.videoUrl) {
-      window.open(material.videoUrl, "_blank");
-      if (!completedMaterialIds.has(material.id)) {
-        recordTrainingMutation.mutate(material);
-      }
-    } else if (material.type === "card" && material.cardImages && material.cardImages.length > 0) {
-      setSelectedMaterial(material);
-      setCardViewerOpen(true);
-    }
+    // Navigate to training detail page for both card and video materials
+    // This enables quiz functionality after watching
+    navigate(`/guard/training/${material.id}`);
   };
+
 
   const handleLogout = async () => {
     await logout();
@@ -121,16 +116,16 @@ export default function GuardDashboard() {
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="flex items-center justify-between p-4 max-w-7xl mx-auto">
           <CompanyLogo company={user?.company} className="h-10" />
-          
+
           <div className="flex items-center gap-4">
             <NotificationBadge />
             <div className="hidden sm:block text-right">
               <p className="font-medium text-lg">{user?.name}</p>
               <p className="text-sm text-muted-foreground">경비원</p>
             </div>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleLogout}
               data-testid="button-logout"
             >
@@ -177,7 +172,7 @@ export default function GuardDashboard() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="flex items-center gap-4 p-6">
               <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
@@ -189,7 +184,7 @@ export default function GuardDashboard() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="flex items-center gap-4 p-6">
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -201,7 +196,7 @@ export default function GuardDashboard() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="flex items-center gap-4 p-6">
               <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
@@ -214,7 +209,7 @@ export default function GuardDashboard() {
             </CardContent>
           </Card>
         </div>
-        
+
         {selectedMonth !== "all" && (
           <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
             <Calendar className="h-5 w-5 text-primary" />
@@ -236,8 +231,8 @@ export default function GuardDashboard() {
           </TabsList>
 
           <TabsContent value="all" className="space-y-4">
-            <MaterialList 
-              materials={filteredMaterials} 
+            <MaterialList
+              materials={filteredMaterials}
               isLoading={materialsLoading}
               completedIds={completedMaterialIds}
               onMaterialClick={handleMaterialClick}
@@ -245,8 +240,8 @@ export default function GuardDashboard() {
           </TabsContent>
 
           <TabsContent value="card" className="space-y-4">
-            <MaterialList 
-              materials={cardMaterials} 
+            <MaterialList
+              materials={cardMaterials}
               isLoading={materialsLoading}
               completedIds={completedMaterialIds}
               onMaterialClick={handleMaterialClick}
@@ -254,8 +249,8 @@ export default function GuardDashboard() {
           </TabsContent>
 
           <TabsContent value="video" className="space-y-4">
-            <MaterialList 
-              materials={videoMaterials} 
+            <MaterialList
+              materials={videoMaterials}
               isLoading={materialsLoading}
               completedIds={completedMaterialIds}
               onMaterialClick={handleMaterialClick}
