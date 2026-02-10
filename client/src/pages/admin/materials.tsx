@@ -26,6 +26,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -227,24 +229,40 @@ export default function AdminMaterials() {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const res = await fetch("/api/uploads", {
+        // 1. Get Signed URL
+        const signedUrlRes = await fetch("/api/upload/signed-url", {
           method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`
           },
-          body: formData,
+          body: JSON.stringify({
+            fileType: file.type,
+            bucket: "uploads"
+          })
         });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.message || `업로드 실패: ${res.statusText}`);
+        if (!signedUrlRes.ok) {
+          const err = await signedUrlRes.json();
+          throw new Error(err.message || "Failed to get upload URL");
         }
 
-        const { objectPath } = await res.json();
-        return objectPath;
+        const { signedUrl, publicUrl } = await signedUrlRes.json();
+
+        // 2. Upload to Supabase Storage directly (bypassing server limit)
+        const uploadRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error(`Storage upload failed: ${uploadRes.statusText}`);
+        }
+
+        return publicUrl;
       } catch (error: any) {
         console.error("Upload error:", error);
         toast({
@@ -313,7 +331,7 @@ export default function AdminMaterials() {
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -321,7 +339,7 @@ export default function AdminMaterials() {
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
   };
@@ -335,20 +353,38 @@ export default function AdminMaterials() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/uploads", {
+      // 1. Get Signed URL
+      const signedUrlRes = await fetch("/api/upload/signed-url", {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: formData,
+        body: JSON.stringify({
+          fileType: file.type,
+          bucket: "uploads"
+        })
       });
 
-      if (!res.ok) throw new Error("Upload failed");
+      if (!signedUrlRes.ok) {
+        const err = await signedUrlRes.json();
+        throw new Error(err.message || "Failed to get upload URL");
+      }
 
-      const { objectPath } = await res.json();
+      const { signedUrl, publicUrl } = await signedUrlRes.json();
+
+      // 2. Upload to Supabase Storage directly
+      const uploadRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`Storage upload failed: ${uploadRes.statusText}`);
+      }
 
       setUploadedAudios((prev) => {
         const newAudios = [...prev];
@@ -356,12 +392,12 @@ export default function AdminMaterials() {
         while (newAudios.length <= index) {
           newAudios.push("");
         }
-        newAudios[index] = objectPath;
+        newAudios[index] = publicUrl;
         return newAudios;
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast({ title: "오류", description: "오디오 업로드 실패", variant: "destructive" });
+      toast({ title: "오류", description: "오디오 업로드 실패: " + error.message, variant: "destructive" });
     }
     setIsUploading(false);
     e.target.value = "";
@@ -376,26 +412,44 @@ export default function AdminMaterials() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/uploads", {
+      // 1. Get Signed URL
+      const signedUrlRes = await fetch("/api/upload/signed-url", {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: formData,
+        body: JSON.stringify({
+          fileType: file.type,
+          bucket: "uploads"
+        })
       });
 
-      if (!res.ok) throw new Error("Video upload failed");
+      if (!signedUrlRes.ok) {
+        const err = await signedUrlRes.json();
+        throw new Error(err.message || "Failed to get upload URL");
+      }
 
-      const { objectPath } = await res.json();
+      const { signedUrl, publicUrl } = await signedUrlRes.json();
 
-      setVideoUrls((prev) => [...prev, objectPath]);
+      // 2. Upload to Supabase Storage directly
+      const uploadRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`Storage upload failed: ${uploadRes.statusText}`);
+      }
+
+      setVideoUrls((prev) => [...prev, publicUrl]);
       toast({ title: "성공", description: "동영상이 업로드되었습니다." });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Video upload error:", error);
-      toast({ title: "오류", description: "동영상 업로드 실패", variant: "destructive" });
+      toast({ title: "오류", description: "동영상 업로드 실패: " + error.message, variant: "destructive" });
     }
     setIsUploading(false);
     e.target.value = "";

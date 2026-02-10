@@ -477,6 +477,52 @@ export async function registerRoutes(
   });
 
 
+  app.post("/api/upload/signed-url", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { bucket = "uploads", fileType } = req.body;
+      const fileExt = fileType ? `.${fileType.split("/")[1]}` : "";
+      const fileName = `${crypto.randomUUID()}${fileExt}`;
+      const filePath = `public/${fileName}`;
+
+      const adminSupabase = createClient(
+        process.env.SUPABASE_URL || "",
+        process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        }
+      );
+
+      // Create Signed Upload URL
+      const { data, error } = await adminSupabase.storage
+        .from(bucket)
+        .createSignedUploadUrl(filePath);
+
+      if (error) {
+        throw error;
+      }
+
+      // Get Public URL for after upload
+      const { data: publicData } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(filePath);
+
+      return res.json({
+        signedUrl: data.signedUrl,
+        token: data.token,
+        path: data.path, // This is the path needed for the upload
+        publicUrl: publicData.publicUrl,
+        fullPath: filePath // Return this ensuring we know where it went
+      });
+    } catch (error) {
+      console.error("Signed URL error:", error);
+      return res.status(500).json({ message: "서버 오류: " + (error as Error).message });
+    }
+  });
+
   app.post("/api/uploads", isAuthenticated, isAdmin, upload.single('file'), async (req, res) => {
     try {
       // Re-initialize a fresh client to ensure no global state issues

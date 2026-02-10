@@ -89,7 +89,12 @@ const init = async () => {
 };
 
 // Start server if running directly
-if (require.main === module) {
+const isMain = process.argv[1] && (
+  process.argv[1].endsWith('server/index.ts') ||
+  process.argv[1].endsWith('dist-server/index.cjs')
+);
+
+if (isMain) {
   (async () => {
     await init();
     const port = parseInt(process.env.PORT || "5000", 10);
