@@ -384,8 +384,19 @@ export default function TrainingView() {
                                             transition={{ duration: 0.3 }}
                                         />
                                     </AnimatePresence>
+                                    {audioUrls[currentCardIndex] && !isPlayingAudio && !canProceedCard && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-10">
+                                            <Button
+                                                size="lg"
+                                                className="rounded-full w-20 h-20 bg-white/20 hover:bg-white/40 text-white border-2 border-white backdrop-blur-md transition-all scale-100 hover:scale-110"
+                                                onClick={toggleAudio}
+                                            >
+                                                <PlayCircle className="w-10 h-10 fill-white" />
+                                            </Button>
+                                        </div>
+                                    )}
                                     {audioUrls[currentCardIndex] && (
-                                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur rounded-full p-2">
+                                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur rounded-full p-2 z-20">
                                             <Button size="icon" variant="ghost" className="text-white rounded-full w-12 h-12" onClick={toggleAudio}>
                                                 {isPlayingAudio ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
                                             </Button>
@@ -401,6 +412,11 @@ export default function TrainingView() {
                                         }}
                                         onPause={() => setIsPlayingAudio(false)}
                                         onPlay={() => setIsPlayingAudio(true)}
+                                        onError={(e) => {
+                                            console.error("Audio error:", e);
+                                            setIsPlayingAudio(false);
+                                            setCanProceedCard(true); // Unlock if audio fails
+                                        }}
                                     />
                                 </div>
                                 <div className="w-full flex items-center justify-between max-w-3xl px-4">
