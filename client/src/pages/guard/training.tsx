@@ -240,18 +240,29 @@ export default function TrainingView() {
                 audioRef.current.load();
                 audioRef.current.volume = 1.0;
                 audioRef.current.currentTime = 0;
-                const playPromise = audioRef.current.play();
 
-                if (playPromise !== undefined) {
-                    playPromise
-                        .then(() => setIsPlayingAudio(true))
-                        .catch((error) => {
-                            console.log("Audio play failed:", error);
-                            setIsPlayingAudio(false);
-                            // If autoplay fails (e.g. browser policy), unlock navigation so user isn't stuck
-                            setCanProceedCard(true);
-                        });
-                }
+                const attemptPlay = async () => {
+                    try {
+                        if (audioRef.current) {
+                            await audioRef.current.play();
+                            setIsPlayingAudio(true);
+                        }
+                    } catch (error) {
+                        console.log("Audio play failed, retrying...", error);
+                        setIsPlayingAudio(false);
+                        // Retry once after a short delay
+                        setTimeout(() => {
+                            if (audioRef.current && audioRef.current.paused) {
+                                audioRef.current.play().catch(e => {
+                                    console.error("Retry failed:", e);
+                                    setCanProceedCard(true); // Unlock if retry also fails
+                                });
+                            }
+                        }, 500);
+                    }
+                };
+
+                attemptPlay();
             } else {
                 setIsPlayingAudio(false);
             }
@@ -399,6 +410,8 @@ export default function TrainingView() {
                                     <audio
                                         ref={audioRef}
                                         className="hidden"
+                                        autoPlay
+                                        playsInline
                                         onEnded={() => {
                                             setIsPlayingAudio(false);
                                             setCanProceedCard(true);
