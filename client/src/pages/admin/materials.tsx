@@ -18,7 +18,8 @@ import {
   Music,
   CheckSquare,
   PlusCircle,
-  MinusCircle
+  MinusCircle,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -265,13 +266,9 @@ export default function AdminMaterials() {
         return publicUrl;
       } catch (error: any) {
         console.error("Upload error:", error);
-        let msg = error.message || "알 수 없는 오류";
-        if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-          msg += " (서버 연결 실패. Supabase CORS 설정을 확인해주세요.)";
-        }
         toast({
           title: "업로드 실패",
-          description: `${file.name}: ${msg}`,
+          description: `${file.name}: ${error.message}`,
           variant: "destructive",
           duration: 5000
         });
@@ -401,11 +398,7 @@ export default function AdminMaterials() {
       });
     } catch (error: any) {
       console.error("Upload error:", error);
-      let msg = error.message || "알 수 없는 오류";
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-        msg += " (서버 연결 실패. Supabase CORS 설정을 확인해주세요.)";
-      }
-      toast({ title: "오류", description: "오디오 업로드 실패: " + msg, variant: "destructive" });
+      toast({ title: "오류", description: "오디오 업로드 실패: " + error.message, variant: "destructive" });
     }
     setIsUploading(false);
     e.target.value = "";
@@ -457,11 +450,7 @@ export default function AdminMaterials() {
       toast({ title: "성공", description: "동영상이 업로드되었습니다." });
     } catch (error: any) {
       console.error("Video upload error:", error);
-      let msg = error.message || "알 수 없는 오류";
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-        msg += " (서버 연결 실패. Supabase CORS 설정을 확인해주세요.)";
-      }
-      toast({ title: "오류", description: "동영상 업로드 실패: " + msg, variant: "destructive" });
+      toast({ title: "오류", description: "동영상 업로드 실패: " + error.message, variant: "destructive" });
     }
     setIsUploading(false);
     e.target.value = "";
@@ -838,9 +827,12 @@ export default function AdminMaterials() {
                     <div className="h-12 w-[1px] bg-border mx-1" />
 
                     <label className="cursor-pointer">
-                      <div className="h-12 px-6 bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center rounded-md text-sm font-medium transition-colors shadow-sm">
+                      <div className={`h-12 px-6 flex items-center justify-center rounded-md text-sm font-medium transition-colors shadow-sm ${isUploading ? "bg-muted text-muted-foreground cursor-not-allowed" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}>
                         {isUploading ? (
-                          "업로드 중..."
+                          <>
+                            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                            업로드 중...
+                          </>
                         ) : (
                           <>
                             <Upload className="h-5 w-5 mr-2" />
@@ -871,22 +863,32 @@ export default function AdminMaterials() {
                     onDragOver={handleDragOver}
                   >
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <Upload className="h-10 w-10 text-muted-foreground mb-2" />
-                      <p className="text-lg font-medium">이미지와 오디오를 드래그하여 놓으세요</p>
-                      <p className="text-sm text-muted-foreground mb-4">또는 아래 버튼을 클릭하여 선택하세요</p>
-                      <label className="cursor-pointer">
-                        <div className="h-12 px-6 bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center rounded-md text-sm font-medium transition-colors shadow-sm">
-                          파일 선택
-                        </div>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*,audio/*"
-                          className="hidden"
-                          disabled={isUploading}
-                          onChange={handleFileUpload}
-                        />
-                      </label>
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="h-10 w-10 text-primary animate-spin mb-2" />
+                          <p className="text-lg font-medium text-primary">파일 업로드 중입니다...</p>
+                          <p className="text-sm text-muted-foreground mb-4">잠시만 기다려주세요</p>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-10 w-10 text-muted-foreground mb-2" />
+                          <p className="text-lg font-medium">이미지와 오디오를 드래그하여 놓으세요</p>
+                          <p className="text-sm text-muted-foreground mb-4">또는 아래 버튼을 클릭하여 선택하세요</p>
+                          <label className="cursor-pointer">
+                            <div className="h-12 px-6 bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center rounded-md text-sm font-medium transition-colors shadow-sm">
+                              파일 선택
+                            </div>
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/*,audio/*"
+                              className="hidden"
+                              disabled={isUploading}
+                              onChange={handleFileUpload}
+                            />
+                          </label>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -931,10 +933,10 @@ export default function AdminMaterials() {
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 w-full">
-                                  <label className="cursor-pointer flex-1">
+                                  <label className={`cursor-pointer flex-1 ${isUploading ? "pointer-events-none opacity-50" : ""}`}>
                                     <div className="flex items-center justify-center gap-2 h-9 px-3 rounded text-sm border hover:bg-muted transition-colors w-full">
-                                      <PlusCircle className="h-4 w-4" />
-                                      오디오 추가
+                                      {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
+                                      {isUploading ? "업로드 중..." : "오디오 추가"}
                                     </div>
                                     <input
                                       type="file"
