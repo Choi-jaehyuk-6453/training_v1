@@ -383,41 +383,30 @@ export default function TrainingView() {
                                             exit={{ opacity: 0, x: -20 }}
                                             transition={{ duration: 0.3 }}
                                         />
-                                        <AnimatePresence mode="wait">
-                                            <motion.img
-                                                key={currentCardIndex}
-                                                src={cardImages[currentCardIndex]}
-                                                alt={`Page ${currentCardIndex + 1}`}
-                                                className="w-full h-auto max-h-[60vh] sm:max-h-[70vh] object-contain mx-auto"
-                                                initial={{ opacity: 0, x: 20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                exit={{ opacity: 0, x: -20 }}
-                                                transition={{ duration: 0.3 }}
-                                            />
-                                        </AnimatePresence>
-                                        {audioUrls[currentCardIndex] && (
-                                            <div className="absolute top-4 right-4 bg-black/50 backdrop-blur rounded-full p-2 z-20">
-                                                <Button size="icon" variant="ghost" className="text-white rounded-full w-12 h-12" onClick={toggleAudio}>
-                                                    {isPlayingAudio ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
-                                                </Button>
-                                            </div>
-                                        )}
-                                        {/* Always render audio element to ensure ref availability */}
-                                        <audio
-                                            ref={audioRef}
-                                            className="hidden"
-                                            onEnded={() => {
-                                                setIsPlayingAudio(false);
-                                                setCanProceedCard(true);
-                                            }}
-                                            onPause={() => setIsPlayingAudio(false)}
-                                            onPlay={() => setIsPlayingAudio(true)}
-                                            onError={(e) => {
-                                                console.error("Audio error:", e);
-                                                setIsPlayingAudio(false);
-                                                setCanProceedCard(true); // Unlock if audio fails
-                                            }}
-                                        />
+                                    </AnimatePresence>
+                                    {audioUrls[currentCardIndex] && (
+                                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur rounded-full p-2 z-20">
+                                            <Button size="icon" variant="ghost" className="text-white rounded-full w-12 h-12" onClick={toggleAudio}>
+                                                {isPlayingAudio ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {/* Always render audio element to ensure ref availability */}
+                                    <audio
+                                        ref={audioRef}
+                                        className="hidden"
+                                        onEnded={() => {
+                                            setIsPlayingAudio(false);
+                                            setCanProceedCard(true);
+                                        }}
+                                        onPause={() => setIsPlayingAudio(false)}
+                                        onPlay={() => setIsPlayingAudio(true)}
+                                        onError={(e) => {
+                                            console.error("Audio error:", e);
+                                            setIsPlayingAudio(false);
+                                            setCanProceedCard(true); // Unlock if audio fails
+                                        }}
+                                    />
                                 </div>
                                 <div className="w-full flex items-center justify-between max-w-3xl px-4">
                                     <Button size="lg" variant="outline" onClick={handlePrevCard} disabled={currentCardIndex === 0} className="h-14 px-8 text-lg">
