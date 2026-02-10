@@ -265,9 +265,13 @@ export default function AdminMaterials() {
         return publicUrl;
       } catch (error: any) {
         console.error("Upload error:", error);
+        let msg = error.message || "알 수 없는 오류";
+        if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+          msg += " (서버 연결 실패. Supabase CORS 설정을 확인해주세요.)";
+        }
         toast({
           title: "업로드 실패",
-          description: `${file.name}: ${error.message}`,
+          description: `${file.name}: ${msg}`,
           variant: "destructive",
           duration: 5000
         });
@@ -397,7 +401,11 @@ export default function AdminMaterials() {
       });
     } catch (error: any) {
       console.error("Upload error:", error);
-      toast({ title: "오류", description: "오디오 업로드 실패: " + error.message, variant: "destructive" });
+      let msg = error.message || "알 수 없는 오류";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        msg += " (서버 연결 실패. Supabase CORS 설정을 확인해주세요.)";
+      }
+      toast({ title: "오류", description: "오디오 업로드 실패: " + msg, variant: "destructive" });
     }
     setIsUploading(false);
     e.target.value = "";
@@ -449,7 +457,11 @@ export default function AdminMaterials() {
       toast({ title: "성공", description: "동영상이 업로드되었습니다." });
     } catch (error: any) {
       console.error("Video upload error:", error);
-      toast({ title: "오류", description: "동영상 업로드 실패: " + error.message, variant: "destructive" });
+      let msg = error.message || "알 수 없는 오류";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        msg += " (서버 연결 실패. Supabase CORS 설정을 확인해주세요.)";
+      }
+      toast({ title: "오류", description: "동영상 업로드 실패: " + msg, variant: "destructive" });
     }
     setIsUploading(false);
     e.target.value = "";
