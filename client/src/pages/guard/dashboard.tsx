@@ -121,7 +121,7 @@ export default function GuardDashboard() {
             <NotificationBadge />
             <div className="hidden sm:block text-right">
               <p className="font-medium text-lg">{user?.name}</p>
-              <p className="text-sm text-muted-foreground">경비원 (v1.3 Audio Fix)</p>
+              <p className="text-sm text-muted-foreground">경비원 (v1.4 Autoplay Final)</p>
             </div>
             <Button
               variant="ghost"

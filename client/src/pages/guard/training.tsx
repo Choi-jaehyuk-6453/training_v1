@@ -245,8 +245,8 @@ export default function TrainingView() {
                         .catch((error) => {
                             console.log("Audio play failed:", error);
                             setIsPlayingAudio(false);
-                            // If autoplay fails, we might still want to lock navigation until they play
-                            // But usually browser blocks autoplay until interaction.
+                            // If autoplay fails (e.g. browser policy), unlock navigation so user isn't stuck
+                            setCanProceedCard(true);
                         });
                 }
             } else {
