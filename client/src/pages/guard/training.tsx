@@ -216,15 +216,37 @@ export default function TrainingView() {
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
     const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+    const [canProceedCard, setCanProceedCard] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const [videoProgress, setVideoProgress] = useState(0);
-    const [canProceedVideo, setCanProceedVideo] = useState(false);
-    const [canTakeQuiz, setCanTakeQuiz] = useState(false);
-    const [userAnswers, setUserAnswers] = useState<number[]>([]);
-    const [quizResult, setQuizResult] = useState<{ score: number; passed: boolean } | null>(null);
     const [hasPlayed, setHasPlayed] = useState(false);
     const [playerError, setPlayerError] = useState(false);
 
+    // Audio handling effect
+    useEffect(() => {
+        if (material?.type === "card") {
+            const hasAudio = !!audioUrls[currentCardIndex];
+            setCanProceedCard(!hasAudio);
+
+            if (hasAudio && audioRef.current) {
+                audioRef.current.src = audioUrls[currentCardIndex];
+                audioRef.current.currentTime = 0;
+                const playPromise = audioRef.current.play();
+
+                if (playPromise !== undefined) {
+                    playPromise
+                        .then(() => setIsPlayingAudio(true))
+                        .catch((error) => {
+                            console.log("Audio play failed:", error);
+                            setIsPlayingAudio(false);
+                            // If autoplay fails, we might still want to lock navigation until they play
+                            // But usually browser blocks autoplay until interaction.
+                        });
+                }
+            } else {
+                setIsPlayingAudio(false);
+            }
+        }
+    }, [currentCardIndex, material, audioUrls]);
     const submitRecordMutation = useMutation({
         mutationFn: async (result: { passed: boolean; score: number }) => {
             if (!material) return;
@@ -248,16 +270,6 @@ export default function TrainingView() {
         }
     }, [quizzes, currentStep]);
 
-    useEffect(() => {
-        if (material?.type === "card" && audioUrls[currentCardIndex]) {
-            if (audioRef.current) {
-                audioRef.current.src = audioUrls[currentCardIndex];
-                audioRef.current.play().then(() => setIsPlayingAudio(true)).catch(() => setIsPlayingAudio(false));
-            }
-        } else {
-            setIsPlayingAudio(false);
-        }
-    }, [currentCardIndex, material, audioUrls]);
 
     useEffect(() => {
         setVideoProgress(0);
@@ -271,6 +283,7 @@ export default function TrainingView() {
 
     const handleNextCard = () => {
         if (currentCardIndex < cardImages.length - 1) {
+            setCanProceedCard(false);
             setCurrentCardIndex(prev => prev + 1);
         } else {
             setCanTakeQuiz(true);
@@ -279,8 +292,16 @@ export default function TrainingView() {
 
     const handlePrevCard = () => {
         if (currentCardIndex > 0) {
+            setCanProceedCard(false);
             setCurrentCardIndex(prev => prev - 1);
         }
+    };
+
+    const handleRetryQuiz = () => {
+        setUserAnswers(new Array(quizzes.length).fill(-1));
+        setQuizResult(null);
+        setCurrentStep("quiz");
+        window.scrollTo(0, 0);
     };
 
     const toggleAudio = () => {
@@ -361,9 +382,19 @@ export default function TrainingView() {
                                             <Button size="icon" variant="ghost" className="text-white rounded-full w-12 h-12" onClick={toggleAudio}>
                                                 {isPlayingAudio ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
                                             </Button>
-                                            <audio ref={audioRef} className="hidden" />
                                         </div>
                                     )}
+                                    {/* Always render audio element to ensure ref availability */}
+                                    <audio
+                                        ref={audioRef}
+                                        className="hidden"
+                                        onEnded={() => {
+                                            setIsPlayingAudio(false);
+                                            setCanProceedCard(true);
+                                        }}
+                                        onPause={() => setIsPlayingAudio(false)}
+                                        onPlay={() => setIsPlayingAudio(true)}
+                                    />
                                 </div>
                                 <div className="w-full flex items-center justify-between max-w-3xl px-4">
                                     <Button size="lg" variant="outline" onClick={handlePrevCard} disabled={currentCardIndex === 0} className="h-14 px-8 text-lg">
@@ -371,11 +402,21 @@ export default function TrainingView() {
                                     </Button>
                                     <span className="text-xl font-mono text-muted-foreground">{currentCardIndex + 1} / {cardImages.length}</span>
                                     {currentCardIndex === cardImages.length - 1 ? (
-                                        <Button size="lg" className="h-14 px-8 text-lg bg-orange-500 hover:bg-orange-600 text-white" onClick={() => setCurrentStep("quiz")}>
+                                        <Button
+                                            size="lg"
+                                            className="h-14 px-8 text-lg bg-orange-500 hover:bg-orange-600 text-white"
+                                            onClick={() => setCurrentStep("quiz")}
+                                            disabled={!canProceedCard}
+                                        >
                                             퀴즈 풀기 <HelpCircle className="ml-2 h-6 w-6" />
                                         </Button>
                                     ) : (
-                                        <Button size="lg" onClick={handleNextCard} className="h-14 px-8 text-lg">
+                                        <Button
+                                            size="lg"
+                                            onClick={handleNextCard}
+                                            className="h-14 px-8 text-lg"
+                                            disabled={!canProceedCard}
+                                        >
                                             다음 <ChevronRight className="ml-2 h-6 w-6" />
                                         </Button>
                                     )}
@@ -461,40 +502,55 @@ export default function TrainingView() {
                     </div>
                 )}
 
-                {currentStep === "quiz" && (
-                    <div className="flex-1 max-w-2xl mx-auto w-full py-8 space-y-8">
-                        <div className="text-center space-y-2"><h2 className="text-3xl font-bold">교육 확인 퀴즈</h2></div>
-                        {quizzes.length > 0 && (
-                            <Card>
-                                <CardContent className="p-6 space-y-8">
-                                    {quizzes.map((quiz: any, idx: number) => (
-                                        <div key={idx} className="space-y-4">
-                                            <h3 className="text-lg font-semibold flex gap-2"><span className="text-primary">Q{idx + 1}.</span>{quiz.question}</h3>
-                                            <RadioGroup onValueChange={(val) => {
-                                                const newAnswers = [...userAnswers]; newAnswers[idx] = parseInt(val); setUserAnswers(newAnswers);
-                                            }}>
-                                                {(Array.isArray(quiz.options) ? quiz.options : []).map((option: string, oIdx: number) => (
-                                                    <div key={oIdx} className="flex items-center space-x-2 border p-4 rounded-lg"><RadioGroupItem value={oIdx.toString()} id={`q${idx}-o${oIdx}`} /><Label htmlFor={`q${idx}-o${oIdx}`} className="flex-1 cursor-pointer">{option}</Label></div>
-                                                ))}
-                                            </RadioGroup>
-                                        </div>
-                                    ))}
-                                </CardContent>
-                                <CardFooter className="p-6 bg-muted/20 flex justify-end"><Button size="lg" onClick={handleQuizSubmit} disabled={userAnswers.filter(a => a !== -1).length !== quizzes.length}>제출하기</Button></CardFooter>
-                            </Card>
-                        )}
-                    </div>
-                )}
-                {currentStep === "result" && quizResult && (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-8 py-12">
-                        <div className="text-center space-y-4">
-                            <h2 className="text-4xl font-bold">{quizResult.passed ? "축하합니다!" : "아쉽네요..."}</h2>
-                            <div className="text-2xl font-bold p-4 bg-muted rounded-xl inline-block px-8">점수: <span className={quizResult.passed ? "text-green-600" : "text-red-500"}>{quizResult.score}점</span></div>
+                {
+                    currentStep === "quiz" && (
+                        <div className="flex-1 max-w-2xl mx-auto w-full py-8 space-y-8">
+                            <div className="text-center space-y-2"><h2 className="text-3xl font-bold">교육 확인 퀴즈</h2></div>
+                            {quizzes.length > 0 && (
+                                <Card>
+                                    <CardContent className="p-6 space-y-8">
+                                        {quizzes.map((quiz: any, idx: number) => (
+                                            <div key={idx} className="space-y-4">
+                                                <h3 className="text-lg font-semibold flex gap-2"><span className="text-primary">Q{idx + 1}.</span>{quiz.question}</h3>
+                                                <RadioGroup onValueChange={(val) => {
+                                                    const newAnswers = [...userAnswers]; newAnswers[idx] = parseInt(val); setUserAnswers(newAnswers);
+                                                }}>
+                                                    {(Array.isArray(quiz.options) ? quiz.options : []).map((option: string, oIdx: number) => (
+                                                        <div key={oIdx} className="flex items-center space-x-2 border p-4 rounded-lg"><RadioGroupItem value={oIdx.toString()} id={`q${idx}-o${oIdx}`} /><Label htmlFor={`q${idx}-o${oIdx}`} className="flex-1 cursor-pointer">{option}</Label></div>
+                                                    ))}
+                                                </RadioGroup>
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                    <CardFooter className="p-6 bg-muted/20 flex justify-end"><Button size="lg" onClick={handleQuizSubmit} disabled={userAnswers.filter(a => a !== -1).length !== quizzes.length}>제출하기</Button></CardFooter>
+                                </Card>
+                            )}
                         </div>
-                        <Button size="lg" className="h-14 px-8 text-lg" onClick={() => setLocation("/guard")}>홈으로 이동</Button>
-                    </div>
-                )}
-            </main>
-        </div>
+                    )
+                }
+                {
+                    currentStep === "result" && quizResult && (
+                        <div className="flex-1 flex flex-col items-center justify-center gap-8 py-12">
+                            <div className="text-center space-y-4">
+                                <h2 className="text-4xl font-bold">{quizResult.passed ? "축하합니다!" : "아쉽네요..."}</h2>
+                                <div className="text-2xl font-bold p-4 bg-muted rounded-xl inline-block px-8">점수: <span className={quizResult.passed ? "text-green-600" : "text-red-500"}>{quizResult.score}점</span></div>
+                            </div>
+
+                            {!quizResult.passed ? (
+                                <div className="flex gap-4">
+                                    <Button size="lg" variant="outline" className="h-14 px-8 text-lg" onClick={() => setLocation("/guard")}>홈으로 이동</Button>
+                                    <Button size="lg" className="h-14 px-8 text-lg" onClick={handleRetryQuiz}>
+                                        <RotateCcw className="mr-2 h-5 w-5" />
+                                        퀴즈 다시 풀기
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button size="lg" className="h-14 px-8 text-lg" onClick={() => setLocation("/guard")}>홈으로 이동</Button>
+                            )}
+                        </div>
+                    )
+                }
+            </main >
+        </div >
     );
 }

@@ -175,8 +175,8 @@ export default function GuardDashboard() {
 
           <Card>
             <CardContent className="flex items-center gap-4 p-6">
-              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
-                <Video className="h-6 w-6 text-accent" />
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <Video className="h-6 w-6 text-red-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{videoMaterials.length}</p>
@@ -289,7 +289,7 @@ export default function GuardDashboard() {
                             {record.materialType === "card" ? (
                               <BookOpen className="h-5 w-5 text-primary" />
                             ) : (
-                              <Video className="h-5 w-5 text-accent" />
+                              <Video className="h-5 w-5 text-red-600" />
                             )}
                             <div>
                               <p className="font-medium">{record.materialTitle}</p>
@@ -391,8 +391,8 @@ function MaterialList({ materials, isLoading, completedIds, onMaterialClick }: M
                     <BookOpen className="h-5 w-5 text-primary" />
                   </div>
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                    <Video className="h-5 w-5 text-accent" />
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                    <Video className="h-5 w-5 text-red-600" />
                   </div>
                 )}
                 <Badge variant="secondary">
