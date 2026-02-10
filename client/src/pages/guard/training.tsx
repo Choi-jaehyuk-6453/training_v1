@@ -221,6 +221,13 @@ export default function TrainingView() {
     const [hasPlayed, setHasPlayed] = useState(false);
     const [playerError, setPlayerError] = useState(false);
 
+    // Missing state variables restored
+    const [userAnswers, setUserAnswers] = useState<number[]>([]);
+    const [quizResult, setQuizResult] = useState<{ score: number; passed: boolean } | null>(null);
+    const [videoProgress, setVideoProgress] = useState(0);
+    const [canProceedVideo, setCanProceedVideo] = useState(false);
+    const [canTakeQuiz, setCanTakeQuiz] = useState(false);
+
     // Audio handling effect
     useEffect(() => {
         if (material?.type === "card") {
@@ -342,24 +349,6 @@ export default function TrainingView() {
         return (
             <div className="min-h-screen flex items-center justify-center p-4">
                 <Skeleton className="h-96 w-full max-w-4xl" />
-                <div className="mt-8 p-4 border border-red-500 bg-red-50 text-red-900 rounded-lg max-w-lg w-full">
-                    <h3 className="font-bold text-lg mb-2">디버그 정보 (개발자 확인용)</h3>
-                    <p><strong>URL ID:</strong> {String(id)}</p>
-                    <p><strong>Match Path:</strong> {String(match)}</p>
-                    <p><strong>Materials Loaded:</strong> {materials ? materials.length : "Loading..."}</p>
-                    <p><strong>Material Found:</strong> {material ? "Yes" : "No"}</p>
-                    <div className="mt-4 text-xs text-muted-foreground">
-                        <p>ID Type: {typeof id}</p>
-                        <p>Material IDs: {materials?.slice(0, 3).map(m => `${m.id} (${typeof m.id})`).join(", ")}</p>
-                    </div>
-                    <Button
-                        className="mt-4"
-                        variant="outline"
-                        onClick={() => window.location.reload()}
-                    >
-                        페이지 새로고침
-                    </Button>
-                </div>
             </div>
         );
     }
