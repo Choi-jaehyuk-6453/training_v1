@@ -121,7 +121,7 @@ export default function GuardDashboard() {
             <NotificationBadge />
             <div className="hidden sm:block text-right">
               <p className="font-medium text-lg">{user?.name}</p>
-              <p className="text-sm text-muted-foreground">경비원 (v1.6 Audio Retry)</p>
+              <p className="text-sm text-muted-foreground">경비원</p>
             </div>
             <Button
               variant="ghost"
@@ -175,8 +175,8 @@ export default function GuardDashboard() {
 
           <Card>
             <CardContent className="flex items-center gap-4 p-6">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <Video className="h-6 w-6 text-red-600" />
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+                <Video className="h-6 w-6 text-red-500" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{videoMaterials.length}</p>
@@ -289,7 +289,7 @@ export default function GuardDashboard() {
                             {record.materialType === "card" ? (
                               <BookOpen className="h-5 w-5 text-primary" />
                             ) : (
-                              <Video className="h-5 w-5 text-red-600" />
+                              <Video className="h-5 w-5 text-red-500" />
                             )}
                             <div>
                               <p className="font-medium">{record.materialTitle}</p>
@@ -391,8 +391,8 @@ function MaterialList({ materials, isLoading, completedIds, onMaterialClick }: M
                     <BookOpen className="h-5 w-5 text-primary" />
                   </div>
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                    <Video className="h-5 w-5 text-red-600" />
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <Video className="h-5 w-5 text-red-500" />
                   </div>
                 )}
                 <Badge variant="secondary">
