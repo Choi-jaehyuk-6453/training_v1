@@ -227,6 +227,7 @@ export default function TrainingView() {
     const [videoProgress, setVideoProgress] = useState(0);
     const [canProceedVideo, setCanProceedVideo] = useState(false);
     const [canTakeQuiz, setCanTakeQuiz] = useState(false);
+    const [audioProgress, setAudioProgress] = useState(0);
 
     // Audio handling effect
     useEffect(() => {
@@ -236,6 +237,8 @@ export default function TrainingView() {
 
             if (hasAudio && audioRef.current) {
                 audioRef.current.src = audioUrls[currentCardIndex];
+                audioRef.current.load();
+                audioRef.current.volume = 1.0;
                 audioRef.current.currentTime = 0;
                 const playPromise = audioRef.current.play();
 
@@ -377,7 +380,8 @@ export default function TrainingView() {
                                             key={currentCardIndex}
                                             src={cardImages[currentCardIndex]}
                                             alt={`Page ${currentCardIndex + 1}`}
-                                            className="w-full h-auto max-h-[60vh] sm:max-h-[70vh] object-contain mx-auto"
+                                            className="w-full h-auto max-h-[60vh] sm:max-h-[70vh] object-contain mx-auto cursor-pointer"
+                                            onClick={toggleAudio}
                                             initial={{ opacity: 0, x: 20 }}
                                             animate={{ opacity: 1, x: 0 }}
                                             exit={{ opacity: 0, x: -20 }}
@@ -406,7 +410,20 @@ export default function TrainingView() {
                                             setIsPlayingAudio(false);
                                             setCanProceedCard(true); // Unlock if audio fails
                                         }}
+                                        onTimeUpdate={() => {
+                                            if (audioRef.current && audioRef.current.duration) {
+                                                setAudioProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+                                            }
+                                        }}
                                     />
+                                    {audioUrls[currentCardIndex] && (
+                                        <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-200/50 backdrop-blur-sm pointer-events-none">
+                                            <div
+                                                className="h-full bg-orange-500 transition-all duration-100 ease-linear"
+                                                style={{ width: `${audioProgress}%` }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="w-full flex items-center justify-between max-w-3xl px-4">
                                     <Button size="lg" variant="outline" onClick={handlePrevCard} disabled={currentCardIndex === 0} className="h-14 px-8 text-lg">
