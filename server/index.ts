@@ -91,7 +91,9 @@ const init = async () => {
 // Start server if running directly
 const isMain = process.argv[1] && (
   process.argv[1].endsWith('server/index.ts') ||
-  process.argv[1].endsWith('dist-server/index.cjs')
+  process.argv[1].endsWith('server\\index.ts') ||
+  process.argv[1].endsWith('dist-server/index.cjs') ||
+  process.argv[1].endsWith('dist-server\\index.cjs')
 );
 
 if (isMain) {

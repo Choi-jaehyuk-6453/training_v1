@@ -732,9 +732,23 @@ export async function registerRoutes(
                 });
                 stats.guardsUpdated++;
               } else {
+                const email = `${formattedPhone}@example.com`;
+                const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+                  email: email,
+                  password: password,
+                  email_confirm: true,
+                  user_metadata: { role: "guard", name: name }
+                });
+
+                if (authError || !authUser.user) {
+                  console.error("Supabase 계정 생성 실패 via Excel:", authError);
+                  throw new Error(authError?.message || "Supabase 계정 생성 실패");
+                }
+
                 await storage.createUser({
+                  id: authUser.user.id,
                   username,
-                  password,
+                  password: "MANAGED_BY_SUPABASE",
                   name,
                   phone: formattedPhone,
                   role: "guard",
