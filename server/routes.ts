@@ -97,12 +97,27 @@ export async function registerRoutes(
       if (username === "관리자") {
         email = "admin@example.com";
       } else {
-        // Look up user by username (Name) to find their phone number
-        const user = await storage.getUserByUsername(username);
-        if (!user || !user.phone) {
+        // 우선 이름으로 모든 사용자를 검색
+        const usersByName = await storage.getUsersByName(username);
+        let targetUser = null;
+
+        if (usersByName.length > 0) {
+          // 이름이 같은 사용자가 여러 명일 경우, 비밀번호(전화번호 뒷 4자리)와 일치하는 사용자를 찾음
+          targetUser = usersByName.find((u) => u.phone && u.phone.slice(-4) === password);
+
+          if (!targetUser) {
+            // 일치하는 사람이 없다면 첫 번째 사람으로 폴백
+            targetUser = usersByName[0];
+          }
+        } else {
+          // 이름으로 검색된 결과가 없으면 username으로 다시 검색 (김영길1927 처럼 직접 아이디를 입력한 경우 대비)
+          targetUser = await storage.getUserByUsername(username);
+        }
+
+        if (!targetUser || !targetUser.phone) {
           return res.status(401).json({ message: "사용자를 찾을 수 없습니다" });
         }
-        email = `${user.phone}@example.com`;
+        email = `${targetUser.phone}@example.com`;
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -707,8 +722,22 @@ export async function registerRoutes(
             if (guard) {
               // Update existing guard
               // Only update if site changed or name changed? Just update always.
+
+              // Also correct the username if it was previously set to the phone number
+              let targetUsername = guard.username;
+              if (guard.username === formattedPhone || guard.username.match(/^[0-9-]+$/)) {
+                // Check if the 'name' is already taken by someone else
+                const existing = await storage.getUserByUsername(name);
+                if (!existing || existing.id === guard.id) {
+                  targetUsername = name;
+                } else {
+                  targetUsername = `${name}${formattedPhone.slice(-4)}`;
+                }
+              }
+
               await storage.updateUser(guard.id, {
                 name: name,
+                username: targetUsername,
                 siteId: site.id,
                 company: company,
                 // We don't update password for existing users to avoid locking them out
@@ -718,47 +747,40 @@ export async function registerRoutes(
               // Create new guard
               // Password = last 4 digits of phone
               const password = formattedPhone.slice(-4) || "0000";
-              const username = formattedPhone; // Use phone as username
+              let username = name; // Use name as username for login
 
-              // Check conflict again just in case
+              // Check conflict just in case (e.g. name is already taken by someone else)
               const conflictingUser = await storage.getUserByUsername(username);
               if (conflictingUser) {
-                // If exists but not in our guardMap (maybe admin or different role?), skip or update?
-                // Let's safe update
-                await storage.updateUser(conflictingUser.id, {
-                  name: name,
-                  siteId: site.id,
-                  company: company,
-                });
-                stats.guardsUpdated++;
-              } else {
-                const email = `${formattedPhone}@example.com`;
-                const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-                  email: email,
-                  password: password,
-                  email_confirm: true,
-                  user_metadata: { role: "guard", name: name }
-                });
-
-                if (authError || !authUser.user) {
-                  console.error("Supabase 계정 생성 실패 via Excel:", authError);
-                  throw new Error(authError?.message || "Supabase 계정 생성 실패");
-                }
-
-                await storage.createUser({
-                  id: authUser.user.id,
-                  username,
-                  password: "MANAGED_BY_SUPABASE",
-                  name,
-                  phone: formattedPhone,
-                  role: "guard",
-                  siteId: site.id,
-                  company: company,
-                });
-                stats.guardsCreated++;
+                // If the name is already taken, append last 4 digits of phone to ensure uniqueness
+                username = `${name}${formattedPhone.slice(-4)}`;
               }
-            }
 
+              const email = `${formattedPhone}@example.com`;
+              const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+                email: email,
+                password: password,
+                email_confirm: true,
+                user_metadata: { role: "guard", name: name }
+              });
+
+              if (authError || !authUser.user) {
+                console.error("Supabase 계정 생성 실패 via Excel:", authError);
+                throw new Error(authError?.message || "Supabase 계정 생성 실패");
+              }
+
+              await storage.createUser({
+                id: authUser.user.id,
+                username,
+                password: "MANAGED_BY_SUPABASE",
+                name,
+                phone: formattedPhone,
+                role: "guard",
+                siteId: site.id,
+                company: company,
+              });
+              stats.guardsCreated++;
+            }
           } catch (rowError) {
             console.error("Error processing row:", rowError);
             stats.errors++;
