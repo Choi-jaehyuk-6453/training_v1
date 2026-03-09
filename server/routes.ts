@@ -220,16 +220,18 @@ export async function registerRoutes(
 
   app.post("/api/guards", isAuthenticated, isAdmin, async (req, res) => {
     try {
-      const { name, phone, company, siteId, username, password, role } = req.body;
+      let { name, phone, company, siteId, username, password, role } = req.body;
 
-      // 1. Check if username/email exists in our DB (optional but good)
-      // 2. Create user in Supabase Auth
-      // We will use username as email: username@training.com (or similar dummy domain)
-      // OR use the loginSchema
+      name = name?.trim();
+      phone = phone?.trim();
+      let targetUsername = username?.trim() || name;
 
-      // Use phone number as email identifier since username (Name) can be Korean (invalid for email)
-      // Format: 01012345678@example.com
-      const email = username === "관리자" ? "admin@example.com" : `${phone}@example.com`;
+      const conflictingUser = await storage.getUserByUsername(targetUsername);
+      if (conflictingUser) {
+        targetUsername = `${name}${phone.slice(-4)}`;
+      }
+
+      const email = targetUsername === "관리자" ? "admin@example.com" : `${phone}@example.com`;
 
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email: email,
@@ -249,7 +251,7 @@ export async function registerRoutes(
       // 3. Create profile in public.users
       const guard = await storage.createUser({
         id: authUser.user.id, // Use Supabase ID
-        username: username || name,
+        username: targetUsername,
         password: "MANAGED_BY_SUPABASE", // Password is in Supabase
         name,
         phone,
@@ -267,23 +269,38 @@ export async function registerRoutes(
 
   app.patch("/api/guards/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
-      const { name, phone, company, siteId, username, password } = req.body;
+      let { name, phone, company, siteId, username, password } = req.body;
 
-      // Note: Updating password in Supabase requires admin API if we want to do it here
-      if (password) {
-        const { error } = await supabase.auth.admin.updateUserById(req.params.id as string, {
-          password: password
-        });
+      if (name) name = name.trim();
+      if (phone) phone = phone.trim();
+
+      const authUpdateData: any = {};
+      if (password) authUpdateData.password = password;
+      if (phone) authUpdateData.email = `${phone}@example.com`;
+
+      if (Object.keys(authUpdateData).length > 0) {
+        const { error } = await supabase.auth.admin.updateUserById(req.params.id as string, authUpdateData);
         if (error) {
-          console.error("Supabase password update failed", error);
+          console.error("Supabase user update failed", error);
         }
       }
 
       const updateData: any = {};
       if (name) {
         updateData.name = name;
-        updateData.username = name;
+
+        const existingGuard = await storage.getUser(req.params.id as string);
+        if (existingGuard && existingGuard.name !== name) {
+          const conflictingUser = await storage.getUserByUsername(name);
+          if (!conflictingUser || conflictingUser.id === req.params.id) {
+            updateData.username = name;
+          } else {
+            const userPhone = phone || existingGuard.phone || "";
+            updateData.username = `${name}${userPhone.slice(-4)}`;
+          }
+        }
       }
+
       if (phone) {
         updateData.phone = phone;
       }
