@@ -39,18 +39,16 @@ async function simulateLoginLookup(username: string, password: string) {
 
 async function main() {
     try {
-        // Test cases from our previous knowledge:
-        // 이범석  phone: 010-7444-6171 (pw: 6171)
-        // 이범석  phone: 010-3789-0197 (pw: 0197)
-        // 김영길  phone: 010-9146-6240 (pw: 6240)
-        // 김영길  phone: 010-6359-1927 (pw: 1927)
-
-        await simulateLoginLookup("이범석", "6171");
-        await simulateLoginLookup("이범석", "0197");
-        await simulateLoginLookup("김영길", "6240");
-        await simulateLoginLookup("김영길", "1927");
-        await simulateLoginLookup("없는이름", "0000");
-
+        const args = process.argv.slice(2);
+        if (args.length >= 2) {
+            await simulateLoginLookup(args[0], args[1]);
+        } else {
+            await simulateLoginLookup("이범석", "6171");
+            await simulateLoginLookup("이범석", "0197");
+            await simulateLoginLookup("김영길", "6240");
+            await simulateLoginLookup("김영길", "1927");
+            await simulateLoginLookup("없는이름", "0000");
+        }
     } catch (err) {
         console.error("Error:", err);
     }
