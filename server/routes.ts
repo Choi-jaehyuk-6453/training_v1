@@ -274,9 +274,62 @@ export async function registerRoutes(
       if (name) name = name.trim();
       if (phone) phone = phone.trim();
 
+      const existingGuard = await storage.getUser(req.params.id as string);
+      if (!existingGuard) {
+        return res.status(404).json({ message: "경비원을 찾을 수 없습니다" });
+      }
+
+      // 사용자가 이름이나 전화번호를 변경하여 기존 인원을 삭제하고 새로운 인원으로 교체하는 경우
+      const isReplacement = name && phone && (name !== existingGuard.name || phone !== existingGuard.phone);
+
+      if (isReplacement) {
+        // 1. 기존 사용자 삭제
+        await supabase.auth.admin.deleteUser(req.params.id as string);
+        await storage.deleteUser(req.params.id as string);
+
+        // 2. 새로운 사용자 생성
+        let targetUsername = username?.trim() || name;
+        const conflictingUser = await storage.getUserByUsername(targetUsername);
+        if (conflictingUser) {
+          targetUsername = `${name}${phone.slice(-4)}`;
+        }
+
+        const email = targetUsername === "관리자" ? "admin@example.com" : `${phone}@example.com`;
+        const newPassword = password || phone.slice(-4) || "0000";
+
+        const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+          email: email,
+          password: newPassword,
+          email_confirm: true,
+          user_metadata: { role: existingGuard.role || "guard", name: name }
+        });
+
+        if (authError || !authUser.user) {
+          console.error("새로운 계정 생성 실패", authError);
+          return res.status(400).json({ message: "새로운 계정 생성 실패: " + authError?.message });
+        }
+
+        const newGuard = await storage.createUser({
+          id: authUser.user.id,
+          username: targetUsername,
+          password: "MANAGED_BY_SUPABASE",
+          name,
+          phone,
+          company: company !== undefined ? company : existingGuard.company,
+          siteId: siteId !== undefined ? (siteId || null) : existingGuard.siteId,
+          role: existingGuard.role || "guard",
+        });
+
+        return res.json(newGuard);
+      }
+
+      // 이름과 전화번호가 변경되지 않은 단순 정보 수정의 경우
       const authUpdateData: any = {};
       if (password) authUpdateData.password = password;
-      if (phone) authUpdateData.email = `${phone}@example.com`;
+      if (phone) {
+        authUpdateData.email = `${phone}@example.com`;
+        authUpdateData.email_confirm = true; // 이메일 변경 시 확인 스킵
+      }
 
       if (Object.keys(authUpdateData).length > 0) {
         const { error } = await supabase.auth.admin.updateUserById(req.params.id as string, authUpdateData);
@@ -289,8 +342,7 @@ export async function registerRoutes(
       if (name) {
         updateData.name = name;
 
-        const existingGuard = await storage.getUser(req.params.id as string);
-        if (existingGuard && existingGuard.name !== name) {
+        if (existingGuard.name !== name) {
           const conflictingUser = await storage.getUserByUsername(name);
           if (!conflictingUser || conflictingUser.id === req.params.id) {
             updateData.username = name;
@@ -308,9 +360,6 @@ export async function registerRoutes(
       if (siteId !== undefined) updateData.siteId = siteId || null;
 
       const guard = await storage.updateUser(req.params.id as string, updateData);
-      if (!guard) {
-        return res.status(404).json({ message: "경비원을 찾을 수 없습니다" });
-      }
       return res.json(guard);
     } catch (error) {
       console.error("Update guard error:", error);
