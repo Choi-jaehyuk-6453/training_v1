@@ -24,32 +24,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TrainingMaterial } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
+import ReactPlayer from "react-player";
 import { AnimatePresence, motion } from "framer-motion";
 
-// Custom hook to load YouTube API
-const useYouTubeAPI = () => {
-    const [apiReady, setApiReady] = useState(false);
-
-    useEffect(() => {
-        if ((window as any).YT) {
-            setApiReady(true);
-            return;
-        }
-
-        const tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-        (window as any).onYouTubeIframeAPIReady = () => {
-            setApiReady(true);
-        };
-    }, []);
-
-    return apiReady;
-};
-
-// Robust Video Player Component
+// Robust Video Player Component using react-player
 const VideoPlayer = ({
     url,
     onProgress,
@@ -61,103 +39,54 @@ const VideoPlayer = ({
     onEnded: () => void;
     onError: () => void;
 }) => {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const iframeRef = useRef<HTMLIFrameElement>(null);
-    const playerRef = useRef<any>(null);
-    const apiReady = useYouTubeAPI();
-    const intervalRef = useRef<NodeJS.Timeout>();
+    const [hasError, setHasError] = useState(false);
 
-    const getYouTubeId = (url: string) => {
-        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
-        const match = url.match(regExp);
-        return (match && match[2].length === 11) ? match[2] : null;
+    // Normalize YouTube Shorts URL to standard watch URL for better compatibility
+    const normalizeUrl = (inputUrl: string): string => {
+        const shortsMatch = inputUrl.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+        if (shortsMatch) {
+            return `https://www.youtube.com/watch?v=${shortsMatch[1]}`;
+        }
+        return inputUrl;
     };
 
-    const youtubeId = getYouTubeId(url);
+    const normalizedUrl = normalizeUrl(url);
 
-    // Initial load for YouTube
-    useEffect(() => {
-        if (youtubeId && apiReady && iframeRef.current && !playerRef.current) {
-            try {
-                playerRef.current = new (window as any).YT.Player(iframeRef.current, {
-                    events: {
-                        'onStateChange': (event: any) => {
-                            if (event.data === (window as any).YT.PlayerState.ENDED) {
-                                onEnded();
-                                clearInterval(intervalRef.current);
-                            } else if (event.data === (window as any).YT.PlayerState.PLAYING) {
-                                // Start polling for progress
-                                intervalRef.current = setInterval(() => {
-                                    if (playerRef.current && playerRef.current.getCurrentTime) {
-                                        const current = playerRef.current.getCurrentTime();
-                                        const duration = playerRef.current.getDuration();
-                                        if (duration > 0) {
-                                            onProgress((current / duration) * 100);
-                                        }
-                                    }
-                                }, 1000);
-                            } else {
-                                clearInterval(intervalRef.current);
-                            }
-                        },
-                        'onError': () => onError()
-                    }
-                });
-            } catch (e) {
-                console.error("YT init error", e);
-            }
-        }
-    }, [youtubeId, apiReady]);
-
-    // Cleanup
-    useEffect(() => {
-        return () => {
-            clearInterval(intervalRef.current);
-            if (playerRef.current && playerRef.current.destroy) {
-                try {
-                    playerRef.current.destroy();
-                } catch (e) {
-                    console.error("Player destroy error", e);
-                }
-                playerRef.current = null;
-            }
-        };
-    }, [url]);
-
-    if (youtubeId) {
-        return (
-            <div className="w-full h-full bg-black">
-                <div id={`youtube-player-${youtubeId}`} className="hidden"></div>
-                <iframe
-                    ref={iframeRef}
-                    className="w-full h-full"
-                    src={`https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&origin=${window.location.origin}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    title="YouTube Video"
-                />
-            </div>
-        );
+    if (hasError) {
+        return null; // Let parent handle error state
     }
 
     return (
-        <video
-            ref={videoRef}
-            src={url}
-            className="w-full h-full object-contain bg-black"
+        <ReactPlayer
+            url={normalizedUrl}
+            width="100%"
+            height="100%"
             controls
-            playsInline
-            onTimeUpdate={() => {
-                if (videoRef.current) {
-                    const progress = (videoRef.current.currentTime / videoRef.current.duration) * 100;
-                    onProgress(progress);
+            playing={false}
+            playsinline
+            onProgress={(state) => {
+                if (state.played > 0) {
+                    onProgress(state.played * 100);
                 }
             }}
             onEnded={onEnded}
-            onError={onError}
+            onError={(e) => {
+                console.error("ReactPlayer error:", e);
+                setHasError(true);
+                onError();
+            }}
+            config={{
+                youtube: {
+                    playerVars: {
+                        modestbranding: 1,
+                        rel: 0,
+                    }
+                }
+            }}
         />
     );
 };
+
 
 export default function TrainingView() {
     const [match, params] = useRoute("/guard/training/:id");
