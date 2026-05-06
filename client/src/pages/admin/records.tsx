@@ -149,9 +149,8 @@ export default function AdminRecords() {
       let status: ComplianceStatus = "uncompleted";
       if (userRecord) {
         if (userRecord.passed) status = "completed";
-        else if (userRecord.status === "started") status = "in_progress";
         // Map "completed but failed" to "uncompleted" visual (or failed logic if needed)
-        else if (!userRecord.passed && userRecord.status === "completed") status = "uncompleted";
+        else if (!userRecord.passed) status = "uncompleted";
         else status = "in_progress"; // Default fallback
       }
 
@@ -196,7 +195,7 @@ export default function AdminRecords() {
         name: r.guard?.name || "-",
         site: r.guard?.site?.name || "-",
         material: r.materialTitle,
-        status: r.passed ? "이수" : r.status === "started" ? "진행중" : "미이수",
+        status: r.passed ? "이수" : "미이수",
         date: new Date(r.completedAt).toLocaleDateString("ko-KR")
       }));
     }
@@ -392,8 +391,6 @@ export default function AdminRecords() {
                             <TableCell>
                               {record.passed ? (
                                 <Badge className="bg-green-600 hover:bg-green-700">이수</Badge>
-                              ) : record.status === "started" ? (
-                                <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-200">진행중</Badge>
                               ) : (
                                 <Badge variant="outline" className="text-muted-foreground border-dashed">미이수</Badge>
                               )}
