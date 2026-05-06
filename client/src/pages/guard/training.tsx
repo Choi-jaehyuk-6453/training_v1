@@ -351,12 +351,20 @@ export default function TrainingView() {
                                     <span className="text-xl font-mono text-muted-foreground">{currentCardIndex + 1} / {cardImages.length}</span>
                                     {currentCardIndex === cardImages.length - 1 ? (
                                         quizzes.length > 0 ? (
-                                            <Button size="lg" className="h-14 px-8 text-lg bg-orange-500 hover:bg-orange-600 text-white" onClick={() => setCurrentStep("quiz")} disabled={!audioFinished}>
-                                                퀴즈 풀기 <HelpCircle className="ml-2 h-6 w-6" />
+                                            <Button size="lg" className={`h-14 px-8 text-lg ${audioFinished ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} onClick={() => setCurrentStep("quiz")} disabled={!audioFinished}>
+                                                {audioFinished ? (
+                                                    <>퀴즈 풀기 <HelpCircle className="ml-2 h-6 w-6" /></>
+                                                ) : (
+                                                    <>음성을 끝까지 들어주세요 <HelpCircle className="ml-2 h-6 w-6 opacity-50" /></>
+                                                )}
                                             </Button>
                                         ) : (
-                                            <Button size="lg" className="h-14 px-8 text-lg bg-green-600 hover:bg-green-700 text-white" onClick={handleNextCard} disabled={!audioFinished}>
-                                                교육 완료 <CheckCircle className="ml-2 h-6 w-6" />
+                                            <Button size="lg" className={`h-14 px-8 text-lg ${audioFinished ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} onClick={handleNextCard} disabled={!audioFinished}>
+                                                {audioFinished ? (
+                                                    <>교육 완료 <CheckCircle className="ml-2 h-6 w-6" /></>
+                                                ) : (
+                                                    <>음성을 끝까지 들어주세요 <CheckCircle className="ml-2 h-6 w-6 opacity-50" /></>
+                                                )}
                                             </Button>
                                         )
                                     ) : (
@@ -436,12 +444,20 @@ export default function TrainingView() {
                                             </Button>
                                         ) : (
                                             quizzes.length > 0 ? (
-                                                <Button size="lg" className="h-16 px-12 text-xl bg-orange-500 hover:bg-orange-600 text-white" onClick={() => setCurrentStep("quiz")} disabled={!canTakeQuiz}>
-                                                    퀴즈 풀러 가기 <HelpCircle className="ml-2 h-6 w-6" />
+                                                <Button size="lg" className={`h-16 px-12 text-xl ${canTakeQuiz ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} onClick={() => setCurrentStep("quiz")} disabled={!canTakeQuiz}>
+                                                    {canTakeQuiz ? (
+                                                        <>퀴즈 풀러 가기 <HelpCircle className="ml-2 h-6 w-6" /></>
+                                                    ) : (
+                                                        <>영상을 끝까지 시청해주세요 <HelpCircle className="ml-2 h-6 w-6 opacity-50" /></>
+                                                    )}
                                                 </Button>
                                             ) : (
-                                                <Button size="lg" className="h-16 px-12 text-xl bg-green-600 hover:bg-green-700 text-white" onClick={() => { setCurrentStep("completed"); submitRecordMutation.mutate({ passed: true, score: 100 }); }} disabled={!canTakeQuiz}>
-                                                    교육 완료 <CheckCircle className="ml-2 h-6 w-6" />
+                                                <Button size="lg" className={`h-16 px-12 text-xl ${canTakeQuiz ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} onClick={() => { setCurrentStep("completed"); submitRecordMutation.mutate({ passed: true, score: 100 }); }} disabled={!canTakeQuiz}>
+                                                    {canTakeQuiz ? (
+                                                        <>교육 완료 <CheckCircle className="ml-2 h-6 w-6" /></>
+                                                    ) : (
+                                                        <>영상을 끝까지 시청해주세요 <CheckCircle className="ml-2 h-6 w-6 opacity-50" /></>
+                                                    )}
                                                 </Button>
                                             )
                                         )}
