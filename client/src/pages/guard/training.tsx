@@ -43,9 +43,16 @@ const VideoPlayer = ({
 
     // Normalize YouTube Shorts URL to standard watch URL for better compatibility
     const normalizeUrl = (inputUrl: string): string => {
+        if (!inputUrl) return "";
+        // Handle YouTube Shorts
         const shortsMatch = inputUrl.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
         if (shortsMatch) {
             return `https://www.youtube.com/watch?v=${shortsMatch[1]}`;
+        }
+        // Handle youtu.be shortened links
+        const youtuBeMatch = inputUrl.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+        if (youtuBeMatch) {
+            return `https://www.youtube.com/watch?v=${youtuBeMatch[1]}`;
         }
         return inputUrl;
     };
