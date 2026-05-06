@@ -24,10 +24,33 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TrainingMaterial } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
-import ReactPlayer from "react-player";
+
 import { AnimatePresence, motion } from "framer-motion";
 
-// Robust Video Player Component using react-player
+// Custom YouTube API Hook
+const useYouTubeAPI = () => {
+    const [apiReady, setApiReady] = useState(false);
+
+    useEffect(() => {
+        if ((window as any).YT) {
+            setApiReady(true);
+            return;
+        }
+
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+        (window as any).onYouTubeIframeAPIReady = () => {
+            setApiReady(true);
+        };
+    }, []);
+
+    return apiReady;
+};
+
+// Robust Video Player Component
 const VideoPlayer = ({
     url,
     onProgress,
@@ -39,57 +62,99 @@ const VideoPlayer = ({
     onEnded: () => void;
     onError: () => void;
 }) => {
-    const [hasError, setHasError] = useState(false);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const playerRef = useRef<any>(null);
+    const apiReady = useYouTubeAPI();
+    const intervalRef = useRef<NodeJS.Timeout>();
 
-    // Normalize YouTube Shorts URL to standard watch URL for better compatibility
-    const normalizeUrl = (inputUrl: string): string => {
-        if (!inputUrl) return "";
-        // Handle YouTube Shorts
+    const getYouTubeId = (inputUrl: string) => {
+        if (!inputUrl) return null;
+        // Shorts
         const shortsMatch = inputUrl.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
-        if (shortsMatch) {
-            return `https://www.youtube.com/watch?v=${shortsMatch[1]}`;
-        }
-        // Handle youtu.be shortened links
-        const youtuBeMatch = inputUrl.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-        if (youtuBeMatch) {
-            return `https://www.youtube.com/watch?v=${youtuBeMatch[1]}`;
-        }
-        return inputUrl;
+        if (shortsMatch) return shortsMatch[1];
+        
+        // Standard and youtu.be
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+        const match = inputUrl.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
     };
 
-    const normalizedUrl = normalizeUrl(url);
+    const youtubeId = getYouTubeId(url);
 
-    if (hasError) {
-        return null; // Let parent handle error state
+    useEffect(() => {
+        if (youtubeId && apiReady && iframeRef.current && !playerRef.current) {
+            try {
+                playerRef.current = new (window as any).YT.Player(iframeRef.current, {
+                    events: {
+                        'onStateChange': (event: any) => {
+                            if (event.data === (window as any).YT.PlayerState.ENDED) {
+                                onEnded();
+                                clearInterval(intervalRef.current);
+                            }
+                            if (event.data === (window as any).YT.PlayerState.PLAYING) {
+                                intervalRef.current = setInterval(() => {
+                                    if (playerRef.current && playerRef.current.getDuration) {
+                                        const duration = playerRef.current.getDuration();
+                                        const currentTime = playerRef.current.getCurrentTime();
+                                        if (duration > 0) {
+                                            onProgress((currentTime / duration) * 100);
+                                        }
+                                    }
+                                }, 1000);
+                            } else {
+                                clearInterval(intervalRef.current);
+                            }
+                        },
+                        'onError': () => {
+                            console.error("YouTube Player error");
+                            onError();
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("YouTube Player init error:", e);
+                onError();
+            }
+        }
+
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, [youtubeId, apiReady, onEnded, onProgress, onError]);
+
+    if (youtubeId) {
+        return (
+            <div className="w-full h-full bg-black relative">
+                <iframe
+                    ref={iframeRef}
+                    className="w-full h-full absolute inset-0"
+                    src={`https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&origin=${window.location.origin}&modestbranding=1&rel=0`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    title="YouTube Video"
+                />
+            </div>
+        );
     }
 
     return (
-        <ReactPlayer
-            url={normalizedUrl}
-            width="100%"
-            height="100%"
+        <video
+            ref={videoRef}
+            src={url}
+            className="w-full h-full object-contain bg-black"
             controls
-            playing={false}
-            playsinline
-            onProgress={(state) => {
-                if (state.played > 0) {
-                    onProgress(state.played * 100);
+            playsInline
+            onTimeUpdate={() => {
+                if (videoRef.current) {
+                    const percent = (videoRef.current.currentTime / videoRef.current.duration) * 100;
+                    onProgress(percent);
                 }
             }}
             onEnded={onEnded}
-            onError={(e) => {
-                console.error("ReactPlayer error:", e);
-                setHasError(true);
-                onError();
-            }}
-            config={{
-                youtube: {
-                    playerVars: {
-                        modestbranding: 1,
-                        rel: 0,
-                    }
-                }
-            }}
+            onError={onError}
         />
     );
 };
