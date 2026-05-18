@@ -1,9 +1,11 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, date, integer, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const userRoleEnum = pgEnum("user_role", ["admin", "guard"]);
+// NOTE: enum name changed from "user_role" → "role" to match mirae_sec_v1 existing schema
+// mirae_sec_v1 DB 호환: 기존 프로젝트에 hq_admin, site_manager, worker enum 값이 존재
+export const userRoleEnum = pgEnum("role", ["hq_admin", "site_manager", "worker", "guard", "admin"]);
 export const companyEnum = pgEnum("company", ["mirae_abm", "dawon_pmc"]);
 export const materialTypeEnum = pgEnum("material_type", ["card", "video"]);
 
@@ -12,8 +14,9 @@ export const sites = pgTable("sites", {
   name: text("name").notNull(),
   company: companyEnum("company").notNull(),
   address: text("address"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
+
 
 export const sitesRelations = relations(sites, ({ many }) => ({
   guards: many(users),
@@ -28,7 +31,10 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull().default("guard"),
   company: companyEnum("company"),
   siteId: varchar("site_id").references(() => sites.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Workforce-Checkin 호환 컬럼 (mirae_sec_v1 기존 테이블)
+  hireDate: date("hire_date"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const usersRelations = relations(users, ({ one, many }) => ({

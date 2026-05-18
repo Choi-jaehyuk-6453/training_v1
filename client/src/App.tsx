@@ -18,6 +18,9 @@ import AdminGuards from "@/pages/admin/guards";
 import AdminRecords from "@/pages/admin/records";
 import { Skeleton } from "@/components/ui/skeleton";
 
+// mirae_sec_v1 통합: 'hq_admin' 역할도 관리자로 인정
+const isAdminRole = (role?: string) => role === "admin" || role === "hq_admin";
+
 function ProtectedRoute({
   children,
   requiredRole
@@ -43,8 +46,11 @@ function ProtectedRoute({
     return <Redirect to="/" />;
   }
 
-  if (requiredRole && user.role !== requiredRole) {
-    return <Redirect to={user.role === "admin" ? "/admin" : "/guard"} />;
+  if (requiredRole && !(
+    (requiredRole === "admin" && isAdminRole(user.role)) ||
+    (requiredRole !== "admin" && user.role === requiredRole)
+  )) {
+    return <Redirect to={isAdminRole(user.role) ? "/admin" : "/guard"} />;
   }
 
   return <>{children}</>;
@@ -98,7 +104,7 @@ function Router() {
     <Switch>
       <Route path="/">
         {user ? (
-          <Redirect to={user.role === "admin" ? "/admin" : "/guard"} />
+          <Redirect to={isAdminRole(user.role) ? "/admin" : "/guard"} />
         ) : (
           <LoginPage />
         )}

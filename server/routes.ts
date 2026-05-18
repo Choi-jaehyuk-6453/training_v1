@@ -36,7 +36,22 @@ async function isAuthenticated(req: Request, res: Response, next: NextFunction) 
     // Attach user to req (we'll fetch the profile from public.users next)
     let profile = null;
     try {
+      // 1차: auth UUID로 조회
       profile = await storage.getUser(user.id);
+
+      // 2차 폴백: Auth UUID와 public.users.id가 다를 때 (DB 이전 시 발생)
+      // 이메일(phone@example.com)에서 전화번호를 추출하여 조회
+      if (!profile && user.email) {
+        if (user.email === "admin@example.com") {
+          // 관리자는 role=admin인 사용자 조회
+          profile = await storage.getUserByUsername("관리자");
+        } else if (user.email.endsWith("@example.com")) {
+          const phone = user.email.replace("@example.com", "");
+          if (phone) {
+            profile = await storage.getUserByPhone(phone);
+          }
+        }
+      }
     } catch (e) {
       console.error("Storage getUser error:", e);
     }
@@ -51,7 +66,8 @@ async function isAuthenticated(req: Request, res: Response, next: NextFunction) 
 
 function isAdmin(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
-  if (user && user.role === "admin") {
+  // mirae_sec_v1 통합으로 인해 'hq_admin'도 관리자로 인정
+  if (user && (user.role === "admin" || user.role === "hq_admin")) {
     return next();
   }
   return res.status(403).json({ message: "관리자 권한이 필요합니다" });
