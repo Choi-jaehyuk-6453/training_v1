@@ -59,7 +59,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUsersByName(name: string): Promise<User[]> {
-    return db.select().from(users).where(and(eq(users.name, name), eq(users.role, "guard")));
+    // admin 제외 모든 role 검색 (guard, worker, site_manager, hq_admin)
+    const results = await db.select().from(users).where(eq(users.name, name));
+    return results.filter(u => u.role !== "admin");
   }
 
   async getUserByPhone(phone: string): Promise<User | undefined> {

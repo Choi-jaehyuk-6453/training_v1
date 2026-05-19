@@ -50,11 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUserProfile();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // TOKEN_REFRESHED는 이미 로그인된 상태이므로 프로필 재조회 불필요
+      if (_event === "TOKEN_REFRESHED") return;
       if (session) {
-        // User signed in or token refreshed
         fetchUserProfile();
       } else {
-        // User signed out
         setUser(null);
         setIsLoading(false);
       }

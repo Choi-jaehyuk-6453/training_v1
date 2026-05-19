@@ -18,6 +18,19 @@ const upload = multer({
 // Initialize Supabase Client Variable (lazy init)
 let supabase: ReturnType<typeof createClient>;
 
+// 인증 캐시: token → {user, profile, expiresAt}
+// Supabase auth.getUser() HTTP 호출을 매 요청마다 하지 않도록 최대 5분 캐싱
+const authCache = new Map<string, { user: any; profile: any; expiresAt: number }>();
+
+function getJwtExpiry(token: string): number {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString("utf8"));
+    return payload.exp ? payload.exp * 1000 : Date.now() + 300_000;
+  } catch {
+    return Date.now() + 300_000;
+  }
+}
+
 // Middleware to verify Supabase Token
 async function isAuthenticated(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -26,6 +39,14 @@ async function isAuthenticated(req: Request, res: Response, next: NextFunction) 
   }
 
   const token = authHeader.split(" ")[1];
+
+  // 캐시 확인 (유효한 캐시 히트 시 Supabase HTTP 호출 생략)
+  const cached = authCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    (req as any).user = cached.profile;
+    return next();
+  }
+
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
@@ -36,14 +57,10 @@ async function isAuthenticated(req: Request, res: Response, next: NextFunction) 
     // Attach user to req (we'll fetch the profile from public.users next)
     let profile = null;
     try {
-      // 1차: auth UUID로 조회
       profile = await storage.getUser(user.id);
 
-      // 2차 폴백: Auth UUID와 public.users.id가 다를 때 (DB 이전 시 발생)
-      // 이메일(phone@example.com)에서 전화번호를 추출하여 조회
       if (!profile && user.email) {
         if (user.email === "admin@example.com") {
-          // 관리자는 role=admin인 사용자 조회
           profile = await storage.getUserByUsername("관리자");
         } else if (user.email.endsWith("@example.com")) {
           const phone = user.email.replace("@example.com", "");
@@ -56,7 +73,21 @@ async function isAuthenticated(req: Request, res: Response, next: NextFunction) 
       console.error("Storage getUser error:", e);
     }
 
-    (req as any).user = profile || { id: user.id, role: user.user_metadata?.role || "guard" };
+    const resolvedProfile = profile || { id: user.id, role: user.user_metadata?.role || "guard" };
+
+    // JWT 만료 시각과 5분 중 더 짧은 시간으로 캐시
+    const expiresAt = Math.min(getJwtExpiry(token), Date.now() + 300_000);
+    authCache.set(token, { user, profile: resolvedProfile, expiresAt });
+
+    // 캐시 크기 관리 (1000개 초과 시 만료 항목 정리)
+    if (authCache.size > 1000) {
+      const now = Date.now();
+      for (const [k, v] of authCache) {
+        if (v.expiresAt < now) authCache.delete(k);
+      }
+    }
+
+    (req as any).user = resolvedProfile;
     next();
   } catch (err) {
     console.error("Auth Middleware Error:", err);
