@@ -9,6 +9,17 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'robots.txt'],
+      workbox: {
+        // /api/* 요청은 서비스워커 캐시를 절대 거치지 않고 네트워크로 직접 전송
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\//,
+            handler: 'NetworkOnly',
+          },
+        ],
+      },
       manifest: {
         name: '경비원 교육 지원 시스템',
         short_name: '경비원교육',
