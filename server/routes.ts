@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import { pool } from "./db";
 
 // Configure Multer (Memory Storage)
 const upload = multer({
@@ -130,6 +131,21 @@ export async function registerRoutes(
     return res.json({ status: "ok" });
   });
 
+  // DB 연결 상태 진단 (로그인 실패 원인 파악용)
+  app.get("/api/health/db", async (_req, res) => {
+    try {
+      const result = await pool.query("SELECT current_database() as db, now() as ts");
+      return res.json({ status: "ok", db: result.rows[0].db });
+    } catch (err: any) {
+      console.error("DB health check failed:", err);
+      return res.status(500).json({
+        status: "error",
+        code: err.code || "UNKNOWN",
+        message: err.message,
+      });
+    }
+  });
+
   // Auth Routes
   // Login is handled on client. 
   // We provide 'me' to fetch profile.
@@ -177,9 +193,13 @@ export async function registerRoutes(
       }
 
       return res.json({ session: data.session, user: data.user });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login error:", error);
-      return res.status(500).json({ message: "서버 오류" });
+      // 실제 오류 코드를 포함해 배포 환경에서 원인 파악 가능하도록
+      return res.status(500).json({
+        message: "서버 오류",
+        code: error?.code || error?.constructor?.name || "UNKNOWN",
+      });
     }
   });
 
