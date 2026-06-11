@@ -301,6 +301,7 @@ export async function registerRoutes(
 
       const email = targetUsername === "관리자" ? "admin@example.com" : `${phone}@example.com`;
 
+      let authUserId: string | null = null;
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email: email,
         password: password || phone?.slice(-4) || "0000",
@@ -309,16 +310,32 @@ export async function registerRoutes(
       });
 
       if (authError) {
-        return res.status(400).json({ message: "Supabase 계정 생성 실패: " + authError.message });
+        if (authError.message.includes("already been registered")) {
+          // If the user was deleted from the DB but still exists in Supabase Auth,
+          // find their ID and reuse it to prevent 400 errors.
+          const { data: usersData } = await supabase.auth.admin.listUsers();
+          if (usersData?.users) {
+            const existing = usersData.users.find(u => u.email === email);
+            if (existing) {
+              authUserId = existing.id;
+            }
+          }
+        }
+        
+        if (!authUserId) {
+          return res.status(400).json({ message: "Supabase 계정 생성 실패: " + authError.message });
+        }
+      } else if (authUser?.user) {
+        authUserId = authUser.user.id;
       }
 
-      if (!authUser.user) {
+      if (!authUserId) {
         return res.status(500).json({ message: "계정 생성 실패" });
       }
 
       // 3. Create profile in public.users
       const guard = await storage.createUser({
-        id: authUser.user.id, // Use Supabase ID
+        id: authUserId, // Use Supabase ID
         username: targetUsername,
         password: "MANAGED_BY_SUPABASE", // Password is in Supabase
         name,
@@ -891,6 +908,7 @@ export async function registerRoutes(
               }
 
               const email = `${formattedPhone}@example.com`;
+              let authUserId: string | null = null;
               const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
                 email: email,
                 password: password,
@@ -898,13 +916,32 @@ export async function registerRoutes(
                 user_metadata: { role: "guard", name: name }
               });
 
-              if (authError || !authUser.user) {
-                console.error("Supabase 계정 생성 실패 via Excel:", authError);
-                throw new Error(authError?.message || "Supabase 계정 생성 실패");
+              if (authError) {
+                if (authError.message.includes("already been registered")) {
+                  // Find existing Supabase Auth user ID
+                  const { data: usersData } = await supabase.auth.admin.listUsers();
+                  if (usersData?.users) {
+                    const existing = usersData.users.find(u => u.email === email);
+                    if (existing) {
+                      authUserId = existing.id;
+                    }
+                  }
+                }
+                
+                if (!authUserId) {
+                  console.error("Supabase 계정 생성 실패 via Excel:", authError);
+                  throw new Error(authError?.message || "Supabase 계정 생성 실패");
+                }
+              } else if (authUser?.user) {
+                authUserId = authUser.user.id;
+              }
+
+              if (!authUserId) {
+                throw new Error("계정 생성 실패");
               }
 
               await storage.createUser({
-                id: authUser.user.id,
+                id: authUserId,
                 username,
                 password: "MANAGED_BY_SUPABASE",
                 name,
