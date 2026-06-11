@@ -249,24 +249,20 @@ export default function AdminGuards() {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array' });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(sheet);
+      const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
 
       let created = 0;
       let errors = 0;
 
       for (const row of rows) {
-        const normalizedRow: any = {};
-        for (const key in row) {
-          normalizedRow[key.trim()] = row[key];
-        }
-
-        const name = normalizedRow['성명'];
-        let phone = normalizedRow['연락처'];
+        if (!Array.isArray(row)) continue;
+        
+        const name = String(row[0] || '').trim();
+        let phone = String(row[1] || '').trim();
 
         if (!name || !phone) continue;
-        phone = String(phone).trim();
-        // Skip example rows
-        if (name.includes('(예시)')) continue;
+        // Skip header row or example rows
+        if (name === '성명' || name.includes('(예시)')) continue;
 
         try {
           const password = phone.slice(-4);
