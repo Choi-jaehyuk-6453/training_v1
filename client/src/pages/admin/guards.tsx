@@ -4,7 +4,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Plus, Pencil, Trash2, User, Phone, MapPin, Building2 } from "lucide-react";
+import * as XLSX from 'xlsx';
+import { ArrowLeft, Plus, Pencil, Trash2, User, Phone, MapPin, Building2, Upload, Download, FileSpreadsheet } from "lucide-react";
+import { supabase } from '@/lib/supabase';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -70,6 +72,10 @@ export default function AdminGuards() {
   const [deletingGuard, setDeletingGuard] = useState<GuardWithSite | null>(null);
   const [selectedSiteFilter, setSelectedSiteFilter] = useState<string>("all");
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<"all" | "mirae_abm" | "dawon_pmc">("all");
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkSiteId, setBulkSiteId] = useState<string>('');
+  const [bulkCompany, setBulkCompany] = useState<'mirae_abm' | 'dawon_pmc'>('mirae_abm');
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
 
   const { data: guards = [], isLoading } = useQuery<GuardWithSite[]>({
     queryKey: ["/api/guards"],
@@ -216,6 +222,91 @@ export default function AdminGuards() {
     setDialogOpen(true);
   };
 
+  const downloadGuardTemplate = () => {
+    const wb = XLSX.utils.book_new();
+    const data = [
+      ['성명', '연락처'],
+      ['(예시) 홍길동', '01012345678'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{ wch: 15 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws, '경비원 목록');
+    XLSX.writeFile(wb, '경비원_등록_양식.xlsx');
+  };
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!bulkSiteId) {
+      toast({ title: '오류', description: '근무 현장을 선택해주세요.', variant: 'destructive' });
+      e.target.value = '';
+      return;
+    }
+
+    setIsBulkUploading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<any>(sheet);
+
+      let created = 0;
+      let errors = 0;
+
+      for (const row of rows) {
+        const normalizedRow: any = {};
+        for (const key in row) {
+          normalizedRow[key.trim()] = row[key];
+        }
+
+        const name = normalizedRow['성명'];
+        let phone = normalizedRow['연락처'];
+
+        if (!name || !phone) continue;
+        phone = String(phone).trim();
+        // Skip example rows
+        if (name.includes('(예시)')) continue;
+
+        try {
+          const password = phone.slice(-4);
+          await apiRequest('POST', '/api/guards', {
+            username: name,
+            password,
+            name,
+            phone,
+            company: bulkCompany,
+            siteId: bulkSiteId,
+            role: 'guard',
+          });
+          created++;
+        } catch (err) {
+          console.error('Guard creation error:', err);
+          errors++;
+        }
+      }
+
+      toast({
+        title: '일괄 등록 완료',
+        description: `신규 등록: ${created}명, 오류: ${errors}건`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['/api/guards'] });
+      setBulkDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: '오류', description: '엑셀 처리 중 오류: ' + err.message, variant: 'destructive' });
+    } finally {
+      setIsBulkUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const openBulkDialog = () => {
+    setBulkSiteId('');
+    setBulkCompany('mirae_abm');
+    setBulkDialogOpen(true);
+  };
+
   const onSubmit = (data: GuardForm) => {
     if (editingGuard) {
       updateMutation.mutate(data);
@@ -251,15 +342,27 @@ export default function AdminGuards() {
               경비원을 등록하고 관리합니다
             </p>
           </div>
-          <Button
-            size="lg"
-            onClick={openCreateDialog}
-            className="text-lg"
-            data-testid="button-add-guard"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            경비원 추가
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={openBulkDialog}
+              className="text-lg"
+              data-testid="button-bulk-add-guard"
+            >
+              <FileSpreadsheet className="h-5 w-5 mr-2" />
+              엑셀 일괄 등록
+            </Button>
+            <Button
+              size="lg"
+              onClick={openCreateDialog}
+              className="text-lg"
+              data-testid="button-add-guard"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              경비원 추가
+            </Button>
+          </div>
         </div>
 
         <Card>
@@ -545,6 +648,85 @@ export default function AdminGuards() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">경비원 엑셀 일괄 등록</DialogTitle>
+            <DialogDescription>
+              엑셀 양식을 다운로드하고, 작성 후 업로드하세요
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <label className="text-sm font-medium">소속 회사</label>
+              <Select
+                value={bulkCompany}
+                onValueChange={(val: 'mirae_abm' | 'dawon_pmc') => {
+                  setBulkCompany(val);
+                  setBulkSiteId('');
+                }}
+              >
+                <SelectTrigger className="h-12 text-base">
+                  <SelectValue placeholder="회사 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mirae_abm">미래에이비엠</SelectItem>
+                  <SelectItem value="dawon_pmc">다원PMC</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-medium">근무 현장 <span className="text-destructive">*</span></label>
+              <Select value={bulkSiteId} onValueChange={setBulkSiteId}>
+                <SelectTrigger className="h-12 text-base">
+                  <SelectValue placeholder="현장을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.filter(s => s.company === bulkCompany).map((site) => (
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={downloadGuardTemplate}
+                className="h-12 text-base w-full"
+              >
+                <Download className="h-5 w-5 mr-2" />
+                양식 다운로드 (.xlsx)
+              </Button>
+
+              <label className="w-full">
+                <Input
+                  type="file"
+                  className="hidden"
+                  accept=".xlsx, .xls"
+                  onChange={handleBulkUpload}
+                  disabled={!bulkSiteId || isBulkUploading}
+                />
+                <Button
+                  asChild
+                  className="h-12 text-base w-full"
+                  disabled={!bulkSiteId || isBulkUploading}
+                >
+                  <span className="cursor-pointer">
+                    <Upload className="h-5 w-5 mr-2" />
+                    {isBulkUploading ? '등록 중...' : '작성한 엑셀 업로드'}
+                  </span>
+                </Button>
+              </label>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

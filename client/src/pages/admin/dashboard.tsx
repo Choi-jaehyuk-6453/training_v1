@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import * as XLSX from 'xlsx';
 import {
   LogOut,
   Users,
@@ -11,7 +12,8 @@ import {
   UserCheck,
   Shield,
   Building2,
-  Upload
+  Upload,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useAuth } from "@/lib/auth";
 import { CompanyLogo } from "@/components/CompanyLogo";
 import type { User, Site, TrainingMaterial, TrainingRecord } from "@shared/schema";
@@ -59,6 +62,30 @@ export default function AdminDashboard() {
   const handleLogout = async () => {
     await logout();
     navigate("/");
+  };
+
+  const downloadTemplate = () => {
+    const wb = XLSX.utils.book_new();
+    
+    // 미래에이비엠 시트
+    const miraeData = [
+      ['현장', '성명', '연락처'],
+      ['(예시) 삼화빌딩', '홍길동', '01012345678'],
+    ];
+    const miraeWs = XLSX.utils.aoa_to_sheet(miraeData);
+    miraeWs['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, miraeWs, '미래에이비엠');
+    
+    // 다원PMC 시트
+    const dawonData = [
+      ['현장', '성명', '연락처'],
+      ['(예시) 대원오피스', '김철수', '01098765432'],
+    ];
+    const dawonWs = XLSX.utils.aoa_to_sheet(dawonData);
+    dawonWs['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, dawonWs, '다원PMC');
+    
+    XLSX.writeFile(wb, '경비원_일괄등록_양식.xlsx');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,20 +202,32 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-4">
             {/* Excel Upload Button */}
             <div className="mr-2">
-              <label>
-                <Input
-                  type="file"
-                  className="hidden"
-                  accept=".xlsx, .xls"
-                  onChange={handleFileUpload}
-                />
-                <Button variant="outline" size="sm" asChild>
-                  <span className="cursor-pointer flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex items-center gap-2">
                     <Upload className="h-4 w-4" />
                     엑셀 일괄 등록
-                  </span>
-                </Button>
-              </label>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={downloadTemplate} className="cursor-pointer">
+                    <Download className="h-4 w-4 mr-2" />
+                    양식 다운로드
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="cursor-pointer">
+                    <label className="flex items-center gap-2 w-full">
+                      <Upload className="h-4 w-4" />
+                      파일 업로드
+                      <Input
+                        type="file"
+                        className="hidden"
+                        accept=".xlsx, .xls"
+                        onChange={handleFileUpload}
+                      />
+                    </label>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Company Switcher */}
