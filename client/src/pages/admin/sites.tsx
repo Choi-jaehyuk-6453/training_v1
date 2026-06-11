@@ -279,7 +279,7 @@ export default function AdminSites() {
                     <span>{site.guards?.length || 0}명의 경비원</span>
                   </div>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {new Date(site.createdAt).toLocaleDateString("ko-KR")} 등록
+                    {site.createdAt ? new Date(site.createdAt).toLocaleDateString("ko-KR") : ""} 등록
                   </p>
                 </CardContent>
               </Card>

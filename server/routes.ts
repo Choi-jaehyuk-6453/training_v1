@@ -83,9 +83,9 @@ async function isAuthenticated(req: Request, res: Response, next: NextFunction) 
     // 캐시 크기 관리 (1000개 초과 시 만료 항목 정리)
     if (authCache.size > 1000) {
       const now = Date.now();
-      for (const [k, v] of authCache) {
+      authCache.forEach((v, k) => {
         if (v.expiresAt < now) authCache.delete(k);
-      }
+      });
     }
 
     (req as any).user = resolvedProfile;
@@ -103,6 +103,38 @@ function isAdmin(req: Request, res: Response, next: NextFunction) {
     return next();
   }
   return res.status(403).json({ message: "관리자 권한이 필요합니다" });
+}
+
+async function getSupabaseUserIdByEmail(email: string): Promise<string | null> {
+  let page = 1;
+  const perPage = 100;
+  try {
+    while (true) {
+      const { data, error } = await supabase.auth.admin.listUsers({
+        page,
+        perPage,
+      });
+      if (error) {
+        console.error("[Supabase Auth] listUsers error:", error);
+        return null;
+      }
+      if (!data?.users || data.users.length === 0) {
+        break;
+      }
+      const existing = data.users.find((u) => u.email === email);
+      if (existing) {
+        console.log(`[Supabase Auth] Found existing user ID ${existing.id} for email ${email}`);
+        return existing.id;
+      }
+      if (data.users.length < perPage) {
+        break;
+      }
+      page++;
+    }
+  } catch (err) {
+    console.error("[Supabase Auth] Exception in getSupabaseUserIdByEmail:", err);
+  }
+  return null;
 }
 
 export async function registerRoutes(
@@ -313,13 +345,7 @@ export async function registerRoutes(
         if (authError.message.includes("already been registered")) {
           // If the user was deleted from the DB but still exists in Supabase Auth,
           // find their ID and reuse it to prevent 400 errors.
-          const { data: usersData } = await supabase.auth.admin.listUsers();
-          if (usersData?.users) {
-            const existing = usersData.users.find(u => u.email === email);
-            if (existing) {
-              authUserId = existing.id;
-            }
-          }
+          authUserId = await getSupabaseUserIdByEmail(email);
         }
         
         if (!authUserId) {
@@ -382,6 +408,7 @@ export async function registerRoutes(
         const email = targetUsername === "관리자" ? "admin@example.com" : `${phone}@example.com`;
         const newPassword = password || phone.slice(-4) || "0000";
 
+        let authUserId: string | null = null;
         const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
           email: email,
           password: newPassword,
@@ -389,13 +416,24 @@ export async function registerRoutes(
           user_metadata: { role: existingGuard.role || "guard", name: name }
         });
 
-        if (authError || !authUser.user) {
-          console.error("새로운 계정 생성 실패", authError);
-          return res.status(400).json({ message: "새로운 계정 생성 실패: " + authError?.message });
+        if (authError) {
+          if (authError.message.includes("already been registered")) {
+            authUserId = await getSupabaseUserIdByEmail(email);
+          }
+          if (!authUserId) {
+            console.error("새로운 계정 생성 실패", authError);
+            return res.status(400).json({ message: "새로운 계정 생성 실패: " + authError?.message });
+          }
+        } else if (authUser?.user) {
+          authUserId = authUser.user.id;
+        }
+
+        if (!authUserId) {
+          return res.status(500).json({ message: "계정 생성 실패" });
         }
 
         const newGuard = await storage.createUser({
-          id: authUser.user.id,
+          id: authUserId,
           username: targetUsername,
           password: "MANAGED_BY_SUPABASE",
           name,
@@ -919,13 +957,7 @@ export async function registerRoutes(
               if (authError) {
                 if (authError.message.includes("already been registered")) {
                   // Find existing Supabase Auth user ID
-                  const { data: usersData } = await supabase.auth.admin.listUsers();
-                  if (usersData?.users) {
-                    const existing = usersData.users.find(u => u.email === email);
-                    if (existing) {
-                      authUserId = existing.id;
-                    }
-                  }
+                  authUserId = await getSupabaseUserIdByEmail(email);
                 }
                 
                 if (!authUserId) {
