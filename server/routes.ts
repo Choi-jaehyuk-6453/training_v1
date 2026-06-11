@@ -286,6 +286,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/guards", isAuthenticated, isAdmin, async (req, res) => {
+    console.log("[POST /api/guards] Request received:", req.body);
     try {
       let { name, phone, company, siteId, username, password, role } = req.body;
 

@@ -257,12 +257,18 @@ export default function AdminGuards() {
       for (const row of rows) {
         if (!Array.isArray(row)) continue;
         
-        const name = String(row[0] || '').trim();
-        let phone = String(row[1] || '').trim();
+        // 빈 값을 제외한 유효한 셀 값만 추출
+        const nonEmptyCells = row
+          .map(v => String(v || '').trim())
+          .filter(v => v !== '');
 
-        if (!name || !phone) continue;
+        if (nonEmptyCells.length < 2) continue;
+        
+        const name = nonEmptyCells[0];
+        let phone = nonEmptyCells[1];
+
         // Skip header row or example rows
-        if (name === '성명' || name.includes('(예시)')) continue;
+        if (name === '성명' || name.includes('(예시)') || phone === '연락처') continue;
 
         try {
           const password = phone.slice(-4);
