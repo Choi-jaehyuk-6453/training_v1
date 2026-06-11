@@ -105,7 +105,8 @@ function isAdmin(req: Request, res: Response, next: NextFunction) {
   return res.status(403).json({ message: "관리자 권한이 필요합니다" });
 }
 
-async function getSupabaseUserIdByEmail(email: string): Promise<string | null> {
+async function getSupabaseUserIdByPhone(phone: string): Promise<string | null> {
+  const targetNormalized = phone.replace(/-/g, "").toLowerCase();
   let page = 1;
   const perPage = 100;
   try {
@@ -121,9 +122,13 @@ async function getSupabaseUserIdByEmail(email: string): Promise<string | null> {
       if (!data?.users || data.users.length === 0) {
         break;
       }
-      const existing = data.users.find((u) => u.email === email);
+      const existing = data.users.find((u) => {
+        if (!u.email) return false;
+        const emailPhone = u.email.split("@")[0].replace(/-/g, "").toLowerCase();
+        return emailPhone === targetNormalized;
+      });
       if (existing) {
-        console.log(`[Supabase Auth] Found existing user ID ${existing.id} for email ${email}`);
+        console.log(`[Supabase Auth] Found existing user ID ${existing.id} for phone ${phone}`);
         return existing.id;
       }
       if (data.users.length < perPage) {
@@ -132,7 +137,7 @@ async function getSupabaseUserIdByEmail(email: string): Promise<string | null> {
       page++;
     }
   } catch (err) {
-    console.error("[Supabase Auth] Exception in getSupabaseUserIdByEmail:", err);
+    console.error("[Supabase Auth] Exception in getSupabaseUserIdByPhone:", err);
   }
   return null;
 }
@@ -324,6 +329,39 @@ export async function registerRoutes(
 
       name = name?.trim();
       phone = phone?.trim();
+
+      if (!name || !phone) {
+        return res.status(400).json({ message: "이름과 연락처는 필수 입력 항목입니다." });
+      }
+
+      // Check if a guard with the same phone number already exists in DB (comparing normalized phone numbers)
+      const existingGuards = await storage.getGuards();
+      const normalizedInputPhone = phone.replace(/-/g, "");
+      const existingGuard = existingGuards.find(
+        (g) => g.phone && g.phone.replace(/-/g, "") === normalizedInputPhone
+      );
+
+      if (existingGuard) {
+        console.log(`[POST /api/guards] Guard already exists in DB. Updating guard ID: ${existingGuard.id}`);
+        const updated = await storage.updateUser(existingGuard.id, {
+          name,
+          company,
+          siteId: siteId || existingGuard.siteId,
+          role: role || existingGuard.role,
+        });
+
+        // Update Supabase Auth user metadata too
+        try {
+          await supabase.auth.admin.updateUserById(existingGuard.id, {
+            user_metadata: { name, role: role || existingGuard.role || "guard" }
+          });
+        } catch (e) {
+          console.error("Failed to update Supabase metadata on existing guard update:", e);
+        }
+
+        return res.json(updated);
+      }
+
       let targetUsername = username?.trim() || name;
 
       const conflictingUser = await storage.getUserByUsername(targetUsername);
@@ -345,7 +383,7 @@ export async function registerRoutes(
         if (authError.message.includes("already been registered")) {
           // If the user was deleted from the DB but still exists in Supabase Auth,
           // find their ID and reuse it to prevent 400 errors.
-          authUserId = await getSupabaseUserIdByEmail(email);
+          authUserId = await getSupabaseUserIdByPhone(phone);
         }
         
         if (!authUserId) {
@@ -418,7 +456,7 @@ export async function registerRoutes(
 
         if (authError) {
           if (authError.message.includes("already been registered")) {
-            authUserId = await getSupabaseUserIdByEmail(email);
+            authUserId = await getSupabaseUserIdByPhone(phone);
           }
           if (!authUserId) {
             console.error("새로운 계정 생성 실패", authError);
@@ -957,7 +995,7 @@ export async function registerRoutes(
               if (authError) {
                 if (authError.message.includes("already been registered")) {
                   // Find existing Supabase Auth user ID
-                  authUserId = await getSupabaseUserIdByEmail(email);
+                  authUserId = await getSupabaseUserIdByPhone(formattedPhone);
                 }
                 
                 if (!authUserId) {
