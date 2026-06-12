@@ -334,12 +334,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: "이름과 연락처는 필수 입력 항목입니다." });
       }
 
-      // Check if a guard with the same phone number already exists in DB (comparing normalized phone numbers)
-      const existingGuards = await storage.getGuards();
+      // Check if user already exists in DB by normalized phone
       const normalizedInputPhone = phone.replace(/-/g, "");
-      const existingGuard = existingGuards.find(
-        (g) => g.phone && g.phone.replace(/-/g, "") === normalizedInputPhone
+      const dbSearch = await pool.query(
+        "SELECT * FROM users WHERE REPLACE(phone, '-', '') = $1",
+        [normalizedInputPhone]
       );
+      const existingGuard = dbSearch.rows[0] || null;
 
       if (existingGuard) {
         console.log(`[POST /api/guards] Guard already exists in DB. Updating guard ID: ${existingGuard.id}`);
