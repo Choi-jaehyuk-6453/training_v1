@@ -7,7 +7,7 @@ import {
   type Notification, type InsertNotification,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -84,7 +84,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getGuards(): Promise<User[]> {
-    return db.select().from(users).where(eq(users.role, "guard")).orderBy(desc(users.createdAt));
+    return db.select()
+      .from(users)
+      .where(
+        or(
+          eq(users.role, "guard"),
+          eq(users.role, "worker"),
+          eq(users.role, "site_manager")
+        )
+      )
+      .orderBy(desc(users.createdAt));
   }
 
   async getSites(): Promise<Site[]> {
