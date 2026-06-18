@@ -216,7 +216,15 @@ export class DatabaseStorage implements IStorage {
   }
   async getTrainingStats(): Promise<any> {
     const allSites = await db.select().from(sites);
-    const allGuards = await db.select().from(users).where(eq(users.role, "guard"));
+    const allGuards = await db.select()
+      .from(users)
+      .where(
+        or(
+          eq(users.role, "guard"),
+          eq(users.role, "worker"),
+          eq(users.role, "site_manager")
+        )
+      );
     const allMaterials = await db.select().from(trainingMaterials);
     const allRecords = await db.select().from(trainingRecords);
 

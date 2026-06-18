@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // mirae_sec_v1 통합: 'hq_admin' 역할도 관리자로 인정
 const isAdminRole = (role?: string) => role === "admin" || role === "hq_admin";
+const isGuardRole = (role?: string) => role === "guard" || role === "worker" || role === "site_manager";
 
 function ProtectedRoute({
   children,
@@ -48,7 +49,7 @@ function ProtectedRoute({
 
   if (requiredRole && !(
     (requiredRole === "admin" && isAdminRole(user.role)) ||
-    (requiredRole !== "admin" && user.role === requiredRole)
+    (requiredRole === "guard" && isGuardRole(user.role))
   )) {
     return <Redirect to={isAdminRole(user.role) ? "/admin" : "/guard"} />;
   }
